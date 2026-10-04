@@ -1,0 +1,29 @@
+# Dependencies and generated builds
+node_modules/
+dist/
+*.tsbuildinfo
+.vite/
+.cache/
+
+# Test output
+coverage/
+test-results/
+playwright-report/
+blob-report/
+
+# Local environment files (keep example templates)
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.local
+
+# Local tooling configuration and generated design reviews
+.claude/settings.local.json
+.impeccable/config.local.json
+.impeccable/review/
+
+# Logs and operating-system files
+*.log
+.DS_Store
+Thumbs.db

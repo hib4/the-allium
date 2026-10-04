@@ -1,0 +1,259 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-04T00:00:00Z",
+  "title": "Design System: The Allium",
+  "extensions": {
+    "colorMeta": {
+      "bg": {
+        "role": "neutral",
+        "displayName": "Midnight field"
+      },
+      "surface": {
+        "role": "neutral",
+        "displayName": "Dark tonal surface"
+      },
+      "navy": {
+        "role": "primary",
+        "displayName": "Navy"
+      },
+      "sky": {
+        "role": "primary",
+        "displayName": "Sky"
+      },
+      "blue": {
+        "role": "primary",
+        "displayName": "Blue"
+      },
+      "teal": {
+        "role": "primary",
+        "displayName": "Teal"
+      },
+      "pink": {
+        "role": "primary",
+        "displayName": "Pink"
+      },
+      "magenta": {
+        "role": "primary",
+        "displayName": "Magenta"
+      },
+      "violet": {
+        "role": "primary",
+        "displayName": "Violet"
+      },
+      "lilac": {
+        "role": "primary",
+        "displayName": "Lilac"
+      },
+      "yellow": {
+        "role": "primary",
+        "displayName": "Yellow"
+      },
+      "white": {
+        "role": "neutral",
+        "displayName": "White"
+      },
+      "muted": {
+        "role": "neutral",
+        "displayName": "Muted"
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Border"
+      },
+      "piano": {
+        "role": "primary",
+        "displayName": "Piano lavender"
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Editorial display",
+        "purpose": "Homepage hero with responsive overrides."
+      },
+      "headline": {
+        "displayName": "Section headline",
+        "purpose": "Recurring 44px editorial headings."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "Introductory and explanatory copy."
+      },
+      "label": {
+        "displayName": "Caption speaker",
+        "purpose": "Uppercase speaker metadata."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "ui-duration",
+        "value": "180ms",
+        "purpose": "Control transitions."
+      },
+      {
+        "name": "ui-ease",
+        "value": "cubic-bezier(0.16, 1, 0.3, 1)",
+        "purpose": "Control easing."
+      },
+      {
+        "name": "scene-smoothing",
+        "value": "400ms exponential time constant",
+        "purpose": "Renderer channel-weight interpolation."
+      },
+      {
+        "name": "pitch-smoothing",
+        "value": "250ms exponential time constant",
+        "purpose": "Renderer pitch response."
+      },
+      {
+        "name": "intensity-smoothing",
+        "value": "180ms exponential time constant",
+        "purpose": "Renderer intensity response."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "narrow",
+        "value": "max-width: 390px"
+      },
+      {
+        "name": "stacked",
+        "value": "max-width: 760px"
+      },
+      {
+        "name": "compact-desktop",
+        "value": "max-width: 1100px"
+      },
+      {
+        "name": "wide-desktop",
+        "value": "min-width: 1700px"
+      },
+      {
+        "name": "panoramic",
+        "value": "min-aspect-ratio: 4/1"
+      }
+    ],
+    "focus": {
+      "value": "2px solid var(--yellow)",
+      "offset": "4px"
+    },
+    "layers": {
+      "artwork": 0,
+      "content": 1,
+      "captions": 2,
+      "controls": 3,
+      "performanceExit": 5
+    },
+    "instrumentMappings": {
+      "vocals": {
+        "colorToken": "magenta",
+        "shape": "Smooth filled ribbons with pink leading highlight"
+      },
+      "guitar": {
+        "colorToken": "sky",
+        "shape": "Angular twin paths"
+      },
+      "drums": {
+        "colorToken": "yellow",
+        "shape": "Localized rings and radial ticks"
+      },
+      "bass": {
+        "colorToken": "teal",
+        "shape": "Broad grounded layered bands"
+      },
+      "piano": {
+        "colorToken": "piano",
+        "shape": "Diamonds, stems and harmonic constellations"
+      }
+    },
+    "accessibility": {
+      "reducedMotion": "Removes travel, particle drift, ring expansion and rising note motion; CSS follows the operating-system preference.",
+      "highContrast": "Independent companion uses white canvas voices, muted #e3e8ff and border #8895c0.",
+      "manualCaptionLimit": 180
+    },
+    "implementationSources": [
+      "src/styles.css",
+      "src/main.tsx",
+      "src/App.tsx",
+      "src/components/Score.tsx",
+      "src/engine/types.ts",
+      "src/engine/renderer.ts",
+      "src/engine/session.ts"
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary action",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Square lilac action with pink hover.",
+      "html": "<button class=\"ds-primary\">Enter the experience</button>",
+      "css": ".ds-primary{font-family:\"Atkinson Hyperlegible Next\",sans-serif;font-size:16px;font-weight:500;min-height:48px;padding:12px 22px;border:1px solid var(--lilac);border-radius:0;background:var(--lilac);color:var(--bg);cursor:pointer;transition:background 180ms cubic-bezier(0.16,1,0.3,1)}.ds-primary:hover{background:var(--pink);border-color:var(--pink)}.ds-primary:focus-visible{outline:2px solid var(--yellow);outline-offset:4px;}"
+    },
+    {
+      "name": "Compact control",
+      "kind": "button",
+      "refersTo": "button-control",
+      "description": "Outlined control with pressed state.",
+      "html": "<button class=\"ds-control\" aria-pressed=\"true\">Reduced motion</button>",
+      "css": ".ds-control{font-family:\"Atkinson Hyperlegible Next\",sans-serif;min-height:44px;padding:9px 16px;border:1px solid var(--border);border-radius:6px;background:none;color:var(--white);cursor:pointer;transition:background 180ms cubic-bezier(0.16,1,0.3,1)}.ds-control:hover{background:#172044;border-color:var(--muted)}.ds-control[aria-pressed=\"true\"]{background:#20294c;border-color:var(--white)}.ds-control:focus-visible{outline:2px solid var(--yellow);outline-offset:4px;}"
+    },
+    {
+      "name": "Caption field",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Visible label and bounded caption entry.",
+      "html": "<label class=\"ds-field\">Caption text<textarea maxlength=\"180\" rows=\"2\" placeholder=\"Words for the audience…\"></textarea></label>",
+      "css": ".ds-field{display:flex;flex-direction:column;gap:8px;color:var(--muted);font:12px \"Atkinson Hyperlegible Next\",sans-serif}.ds-field textarea{font:16px \"Atkinson Hyperlegible Next\",sans-serif;background:var(--surface);color:var(--white);border:1px solid var(--border);border-radius:6px;padding:12px;min-height:90px;max-width:100%;resize:vertical;caret-color:var(--pink)}.ds-field textarea:focus-visible{outline:2px solid var(--yellow);outline-offset:4px;}"
+    },
+    {
+      "name": "Website navigation",
+      "kind": "nav",
+      "description": "Pink underlined active route.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Main\"><a href=\"/experience\" aria-current=\"page\">Experience</a><a href=\"/tutorial\">Visual language</a></nav>",
+      "css": ".ds-nav{display:flex;gap:36px;font:15px \"Atkinson Hyperlegible Next\",sans-serif}.ds-nav a{display:flex;align-items:center;min-height:44px;color:var(--white);text-decoration:none}.ds-nav a:hover{color:var(--pink)}.ds-nav a[aria-current=\"page\"]{color:var(--pink);text-decoration:underline;text-underline-offset:8px}.ds-nav a:focus-visible{outline:2px solid var(--yellow);outline-offset:4px;}"
+    },
+    {
+      "name": "Caption band",
+      "kind": "custom",
+      "refersTo": "caption-band",
+      "description": "Solid DOM caption surface with sample label.",
+      "html": "<div class=\"ds-captions\"><div class=\"ds-caption-content\" aria-live=\"polite\" aria-atomic=\"true\"><span class=\"ds-speaker\">Maya — vocals <small>· SAMPLE CAPTION</small></span><p>“A little space between the words.”</p></div></div>",
+      "css": ".ds-captions{background:var(--bg);color:var(--white);text-align:center;display:flex;justify-content:center;align-items:center;padding:24px 5%;border-top:1px solid #202949;min-height:134px;font-family:\"Atkinson Hyperlegible Next\",sans-serif}.ds-caption-content{max-width:90ch;width:100%;overflow-wrap:anywhere}.ds-speaker{font-size:12px;letter-spacing:.12em;color:var(--lilac);font-weight:600;text-transform:uppercase}.ds-speaker small{color:var(--muted);font-size:10px;letter-spacing:.05em}.ds-captions p{font-size:clamp(22px,2.2vw,38px);line-height:1.3;margin:10px 0 0;font-weight:500}"
+    }
+  ],
+  "narrative": {
+    "northStar": "Living panoramic visual score",
+    "overview": "One continuous field carries distinct musical voices through theatrical editorial typography and solid captions. The user-pinned direction and approved code-first implementation are the visual authority; no supplied visual comp replaces them. UI copy and the development workflow remain English.\n\nThe score is warm, artistic and inclusive, with sparse complete gestures in quiet passages and localized energy in intense passages. Temporary text identity reserves the original logo placement until the supplied full, compact and high-contrast marks are available.",
+    "keyCharacteristics": [
+      "Continuous panoramic score with identifiable instrument shapes.",
+      "Editorial hierarchy and a stable opaque caption band.",
+      "Flat, bordered controls with truthful synthetic-demo state.",
+      "Local fonts and device-aware motion."
+    ],
+    "rules": [
+      {
+        "name": "The Instrument Identity Rule",
+        "body": "Color reinforces shape, position, texture and motion; it never supplies the only instrument cue.",
+        "section": "colors"
+      },
+      {
+        "name": "The Caption Band Rule",
+        "body": "Keep audience text outside the canvas in a stable opaque band, with polite atomic announcements and explicit sample-content labels. Manual cues are limited to 180 characters, support Unicode text and remain until cleared or replaced; longer passages use consecutive cues. The character counter follows the implementation’s JavaScript string-length and textarea limit. Hiding captions retains the cue and shows the captions-off state.",
+        "section": "components"
+      }
+    ],
+    "dos": [
+      "Do preserve the continuous field and each instrument’s shape, position and texture in grayscale.",
+      "Do keep captions as readable DOM text in their own solid band.",
+      "Do label demo content and keep local-font, offline performance behavior.",
+      "Do replace temporary identity only with the original supplied logo assets."
+    ],
+    "donts": [
+      "Don’t replace the score with equalizer boxes, a card grid or unrelated decoration.",
+      "Don’t use color alone to identify instruments.",
+      "Don’t introduce rapid full-screen flashes or motion that bypasses Reduced Motion.",
+      "Don’t imply live transcription, cross-device synchronization or an invented original logo."
+    ]
+  }
+}
