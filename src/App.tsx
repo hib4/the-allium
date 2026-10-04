@@ -380,6 +380,7 @@ function Tutorial() {
         <section className="lesson-theatre">
           <Score
             session={session}
+            profile="tutorial"
             instrument={lesson === "all" ? undefined : lesson}
           />
           <div className="lesson-caption" aria-live="polite">
@@ -544,7 +545,7 @@ function CaptionEditor() {
 function Control() {
   const { state, status } = useSession(concert);
   const time = useTime(concert, 100);
-  const levels = continuous(time, state.section);
+  const levels = continuous(time, state.section, state.sectionStart);
   useEffect(() => {
     concert.setRole("operator");
     return () => concert.setRole("viewer");
@@ -696,7 +697,7 @@ function Control() {
             <section className="preview-desk">
               <h2>Display preview</h2>
               <div className="operator-preview">
-                <Score session={concert} />
+                <Score session={concert} profile="preview" />
                 <Captions session={concert} compact />
               </div>
               <p className="panel-note">
@@ -854,6 +855,7 @@ function Follow() {
             session={session}
             instrument={selected === "all" ? undefined : selected}
             highContrast={contrast}
+            profile="companion"
           />
           <Captions session={session} />
           <Legend selected={selected} onSelect={setSelected} />

@@ -3,5 +3,5 @@ import react from "@vitejs/plugin-react";
 export default defineConfig({
   plugins: [react()],
   server: { port: 5173 },
-  test: { environment: "node", include: ["tests/engine.test.ts"] },
+  test: { environment: "node", include: ["tests/*.test.ts"] },
 } as Parameters<typeof defineConfig>[0]);

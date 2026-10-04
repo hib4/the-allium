@@ -105,35 +105,41 @@ export function eventsBetween(
 export function continuous(
   time: number,
   section: Section,
+  origin = 0,
 ): Record<Instrument, { pitch: number; intensity: number }> {
-  const t = time / 1000;
-  const a = arrangements[section];
-  const step = Math.floor(time / stepMs);
-  const bar = Math.floor(step / 16);
-  return Object.fromEntries(
-    instruments.map((i, index) => {
-      const phraseStep =
-        i === "guitar" && section === "Guitar Solo"
-          ? step
-          : Math.floor(step / (i === "vocals" ? 2 : 4));
-      const note =
-        i === "bass"
-          ? bassline[Math.floor(step / 8) % bassline.length]
-          : i === "piano"
-            ? 60 + (bar % 4) * 2
-            : i === "drums"
-              ? 36
-              : melody[(phraseStep + bar) % melody.length] +
-                (i === "guitar" ? 12 : 5);
-      return [
-        i,
-        {
-          pitch: note,
-          intensity: a[i] * (0.65 + 0.35 * Math.sin(t * 0.7 + index) ** 2),
-        },
-      ];
-    }),
+  // Levels and pitch use the exact same note events as the demo scheduler.
+  const local = Math.max(0, time - origin);
+  const step = Math.floor(local / stepMs);
+  const recent = eventsBetween(
+    origin + Math.max(-1, (step - 16) * stepMs - 0.01),
+    time,
+    section,
+    origin,
+  );
+  const frame = Object.fromEntries(
+    instruments.map((i) => [
+      i,
+      { pitch: i === "bass" ? 36 : i === "guitar" ? 72 : 65, intensity: 0 },
+    ]),
   ) as Record<Instrument, { pitch: number; intensity: number }>;
+  for (const event of recent) {
+    const age = Math.max(0, time - event.timestamp);
+    const sustain =
+      event.instrument === "bass"
+        ? 2200
+        : event.instrument === "vocals"
+          ? 1100
+          : event.instrument === "guitar"
+            ? 1400
+            : event.instrument === "piano"
+              ? 2200
+              : 240;
+    frame[event.instrument] = {
+      pitch: event.pitch ?? frame[event.instrument].pitch,
+      intensity: event.intensity * Math.exp(-age / sustain),
+    };
+  }
+  return frame;
 }
 export function demoCaption(time: number, section: Section): CaptionCue | null {
   const t = time % 24000;

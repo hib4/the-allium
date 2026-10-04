@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-React, TypeScript, Vite; Canvas 2D rendering.
+React, TypeScript, Vite; PixiJS WebGL rendering with a shared-choreography animated Canvas 2D fallback.
 
 ## Users
 

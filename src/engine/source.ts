@@ -17,14 +17,14 @@ export interface MusicSource {
     section: Section,
     origin: number,
   ): MusicEvent[];
-  frame(time: number, section: Section): MusicalFrame;
+  frame(time: number, section: Section, origin?: number): MusicalFrame;
 }
 export class DemoSource implements MusicSource {
   events(from: number, to: number, section: Section, origin: number) {
     return eventsBetween(from, to, section, origin);
   }
-  frame(time: number, section: Section) {
-    return continuous(time, section);
+  frame(time: number, section: Section, origin = 0) {
+    return continuous(time, section, origin);
   }
 }
 /** Future audio/WebSocket adapters push normalized events here, never into React. */

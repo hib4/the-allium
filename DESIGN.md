@@ -80,11 +80,11 @@ components:
 
 ## Overview
 
-**Creative North Star: "Living panoramic visual score"**
+**Creative North Star: "Luminous Allium: living panoramic visual score"**
 
-One continuous field carries distinct musical voices through theatrical editorial typography and solid captions. The user-pinned direction and approved code-first implementation are the visual authority; no supplied visual comp replaces them. UI copy and the development workflow remain English.
+One continuous field carries distinct musical voices through theatrical editorial typography and solid captions. The user-pinned direction and approved code-first Luminous Allium implementation are the visual authority; no supplied visual comp replaces them. UI copy and the development workflow remain English.
 
-The score is warm, artistic and inclusive, with sparse complete gestures in quiet passages and localized energy in intense passages. Temporary text identity reserves the original logo placement until the supplied full, compact and high-contrast marks are available.
+The score is warm, artistic and inclusive: luminous braided trails, layered currents and allium-flower chord blooms retain musical structure through quiet and intense passages. The established UI, font, palette and route layouts continue to frame this concert choreography. Temporary text identity reserves the original logo placement until the supplied full, compact and high-contrast marks are available.
 
 **Key Characteristics:**
 
@@ -100,7 +100,7 @@ The navy field supports bright musical voices, softened editorial accents and le
 ### Primary
 
 - Lilac fills primary actions; pink marks their hover state, emphasized headline words and active navigation.
-- Magenta with pink highlights identifies vocals; sky identifies guitar; yellow identifies drums; teal identifies bass; the separate piano lavender identifies piano.
+- Magenta identifies vocals; sky identifies guitar; yellow identifies drums; teal identifies bass; the separate piano lavender identifies piano.
 
 ### Neutral
 
@@ -136,19 +136,19 @@ Operator and audience display tabs share state only within the same browser prof
 
 ## Elevation & Depth
 
-No UI shadow vocabulary is implemented. Depth comes from the dark field, tonal surfaces, section rules and layered musical fills. Dark gradients protect hero and desktop lesson copy; captions use an opaque background. Layer tokens place artwork at 0, content at 1, captions at 2 and controls at 3; the focused performance exit sits at 5.
+No UI shadow vocabulary is implemented. UI depth comes from the dark field, tonal surfaces and section rules. Concert depth comes from luminous feathered strands, layered currents and bounded lights. PixiJS WebGL uses textured meshes and a batched light field; Canvas 2D renders the same shared geometry with a bounded 24-pass Gaussian feather for soft strokes. These musical light treatments do not introduce a new UI shadow token. Dark gradients protect hero and desktop lesson copy; captions use an opaque background. Layer tokens place artwork at 0, content at 1, captions at 2 and controls at 3; the focused performance exit sits at 5.
 
 ## Shapes
 
 Primary actions, scene buttons, lesson tabs and channel actions have square corners. Compact buttons and fields use the 6px radius. Rounded tracks and circular status dots are functional exceptions.
 
-- **Vocals:** smooth filled ribbons around the upper-middle field with multiple flowing lines and a pink leading highlight.
-- **Guitar:** angular twin paths across the middle; bends and turns follow intensity and pitch.
-- **Drums:** localized expanding rings and radial ticks; kick, snare and hi-hat differ in scale, line weight and articulation.
-- **Bass:** broad layered bands and four grounded paths near the bottom.
-- **Piano:** individual diamonds and stems, grouped into harmonic constellations above the middle.
+- **Vocals:** braided, luminous pitch-history trails around the upper-middle field; fine strands and soft envelopes reveal the melodic contour.
+- **Guitar:** a sharper pitch-history contour across the middle with angular detail and localized branching filaments on stronger attacks.
+- **Drums:** localized pressure rings and radial ticks; kick, snare and hi-hat retain distinct scale and articulation. Kick pressure deforms nearby melodic paths and bass currents instead of flashing the whole field.
+- **Bass:** broad, layered currents near the bottom; slower phase, pitch and intensity give the ensemble a grounded flow.
+- **Piano:** chord-triggered allium-flower blooms with petal contours, diamond/stem note constellations and connecting traces. Chorus chords open larger blooms; quieter passages retain a restrained flower form.
 
-Pitch shifts paths vertically; intensity changes thickness, amplitude and impact scale. Quiet or paused passages preserve sparse piano diamonds and a drum ring. Scene focus changes interpolated channel weights; mute hides a channel and solo limits the visible subset, with mute taking precedence.
+Normalized musical events and continuous input frames feed one shared choreography model. Pitch shifts contours vertically; intensity changes strand width, bloom size and pressure strength. Eight seconds of sampled melodic history carries the phrase through the field. Section changes blend outgoing and incoming melodic envelopes over two seconds without clearing old history or existing blooms. Scene focus changes interpolated channel weights; mute hides a channel and solo limits the visible subset, with mute taking precedence.
 
 ## Components
 
@@ -158,9 +158,13 @@ Primary actions use lilac fill and dark text; hover shifts to pink. Compact cont
 
 Controls normally have targets of at least 44px; primary actions are at least 48px. Keyboard focus is a yellow 2px outline with 4px offset, including the hidden-input toggle’s visible track. A skip link, semantic controls, pressed states and DOM captions complement the decorative, aria-hidden canvas. Automated checks do not establish complete WCAG conformance: audience viewing distance and the real LED hardware remain rehearsal checks.
 
-UI transitions use 180ms with `cubic-bezier(0.16, 1, 0.3, 1)`. The renderer smooths scene weights with a 400ms exponential time constant, pitch with 250ms and intensity with 180ms; these are continuous responses, not fixed-duration scene animations. Calm Mode reduces motion and particle density to 20% and lowers visual energy. Reduced Motion removes path travel, particle drift and impact expansion/rising movement while preserving musical identity and changing input; the operating-system preference also disables CSS animation/transitions.
+UI transitions use 180ms with `cubic-bezier(0.16, 1, 0.3, 1)`. Choreography uses exponential time constants of 220ms for pitch, 280ms for intensity, 650ms for energy and 400ms for focus weights. History is sampled at 30Hz with 180ms pitch smoothing. The separate two-second section envelope preserves phrase continuity; these continuous musical responses do not become fixed-duration UI animations.
 
-The artwork uses one requestAnimationFrame loop per score with bounded history (128 impacts), at most 42 decorative particles before adaptation, and pixel density capped at 1.75. Keep this bounded renderer architecture when extending visual behavior.
+Calm Mode scales phase motion to 18%, decorative particle density to 15% and visual strength to 62%, with smaller blooms and lighter melodic detail. Reduced Motion removes travelling history, particle drift, bloom unrolling and rotation, pressure expansion and nearby-path deformation, and guitar attack filaments. It preserves instrument shapes and musical pitch/intensity response. The operating-system preference also disables CSS animation/transitions.
+
+One requestAnimationFrame loop per score owns sizing and adaptive detail; React stays outside the frame loop. The default PixiJS WebGL backend and animated Canvas 2D fallback consume the same geometry. WebGL initialization failure or context loss switches to a fresh Canvas without resetting the concert session or captions. If both backends fail, a static SVG score, explanatory DOM fallback, captions and controls remain available. A forced Canvas rehearsal uses `renderer=canvas` in the display query.
+
+Resources are bounded: 240 history samples per instrument at 30Hz (eight seconds), 12 pressure events, 24 chord groups, eight guitar attacks, 256 paths with at most 160 points each, and 1,200 lights (180 for the companion or a score narrower than 600px). The preview has a 240-decorative-particle budget before shared light limits. Sustained slow frames reduce density, secondary strands and bloom petals; device pixel density is capped at 1.5 and drops to 1 at lower adaptive quality. Keep musical identity, caption independence and these resource bounds when extending the score.
 
 ## Do's and Don'ts
 

@@ -1,6 +1,6 @@
 # The Allium
 
-A living visual score for an inclusive music and art event at Glitz Inclusive, Jakarta. React + TypeScript + Vite, using a bounded Canvas 2D renderer and semantic HTML captions. The first version is a **visual-only synthetic demo**, not microphone analysis or live transcription.
+A living visual score for an inclusive music and art event at Glitz Inclusive, Jakarta. React + TypeScript + Vite, using bounded PixiJS WebGL choreography, an animated Canvas 2D fallback, and semantic HTML captions. The first version is a **visual-only synthetic demo**, not microphone analysis or live transcription.
 
 ## Run
 
@@ -51,10 +51,11 @@ Only one operator tab owns controls. Additional operator tabs are read-only unti
 - `music.ts` provides deterministic 96 BPM musical patterns and sample captions. Kick, snare and hi-hat have separate articulations. Section arrangements have distinct density and instrument emphasis.
 - `source.ts` defines `MusicSource`, a synthetic `DemoSource`, and a bounded `EventSource` for future live data. Push validated events into `EventSource`; pass that source into `ScoreRenderer` instead of the default demo source. A live adapter must supply continuous event levels, including silence, and update UI source/status reporting before enabling live mode.
 - `session.ts` separates the `Transport` interface from state. The included BrowserTransport uses versioned messages, state revisions, timeline anchors, snapshots, and peer heartbeats. A future WebSocket transport can implement the same interface; server authentication, clock synchronization, session IDs and venue routing belong to that future implementation.
-- `renderer.ts` is a single requestAnimationFrame loop, with smoothed pitch/intensity, interpolated scene weights, pooled bounded event history and adaptive particle density. React does not update on every frame.
+- `choreography.ts` builds the shared visual score: eight seconds of melodic history, braided vocal trails, guitar attack filaments, bass currents, piano chord blooms, and drum pressure fields that displace nearby paths. Sections crossfade their melodic envelopes over two seconds without clearing phrase history.
+- `renderer.ts` owns one requestAnimationFrame loop, viewport sizing, adaptive detail, and backend lifecycle. `webgl.ts` renders pooled PixiJS meshes and batched lights; `backends.ts` renders the same geometry with Canvas 2D. WebGL failure or context loss switches to a fresh Canvas without resetting the session or captions. If both backends fail, the static score and readable captions remain. React does not update on every frame.
 - Caption content remains DOM text, independent of the visual canvas. The operator preview and audience display use the same state and rendering system.
 
-Event timestamps are milliseconds on the session timeline; pitch is a MIDI note number; intensity and confidence range from 0 to 1. Renderer event history is limited to 128 impacts, external queues to 512 events, and decorative musical particles to 42 before density adaptation. Device pixel density is capped at 1.75 to bound panoramic rendering cost.
+Event timestamps are milliseconds on the session timeline; pitch is a MIDI note number; intensity and confidence range from 0 to 1. Resources are bounded: 240 pitch-history samples per instrument at 30 Hz (eight seconds), 12 pressure events, 24 chord groups, eight guitar attacks, 256 paths with up to 160 points each, and 1,200 lights (180 on the companion). External queues retain at most 512 events. Pixel density is capped at 1.5; sustained slow frames reduce particle density, secondary strands, bloom detail and then pixel density. Reduced Motion removes travelling history, drifting particles, bloom unrolling, pressure expansion and guitar attack filaments while retaining note shapes and intensity feedback.
 
 ## Identity and accessibility
 
@@ -72,6 +73,6 @@ npm run test:browser
 npm run build
 ```
 
-Browser tests use installed Google Chrome (`channel: 'chrome'`). Install Chrome from its official source if unavailable, or change the Playwright configuration to use its managed Chromium and install that browser. `node scripts/qa.mjs` captures all routes at 1440px and 320px, runs axe checks, captures a 3840×768 chorus in color/grayscale, and profiles twenty seconds of active panoramic rendering. Results and screenshots are saved under `.impeccable/review/`.
+Browser tests use installed Google Chrome (`channel: 'chrome'`). Install Chrome from its official source if unavailable, or change the Playwright configuration to use its managed Chromium and install that browser. `node scripts/qa.mjs` captures all routes at 1440px and 320px, runs axe checks, captures a 3840×768 chorus in color/grayscale, and profiles twenty seconds of active panoramic rendering. Results and screenshots are saved under `.impeccable/review/`. `node scripts/concert-qa.mjs` additionally records actual concert motion, captures every section and focus mode, checks reduced motion/grayscale, and profiles both backends at 3840×768. To rehearse the animated fallback directly, append `renderer=canvas` to the display URL (for example `/experience?performance=1&renderer=canvas`).
 
 Automated accessibility checks do not establish complete WCAG conformance. Before an actual event, validate instrument recognition with Deaf and hard-of-hearing audience members, check caption size at audience viewing distance, and rehearse on the actual LED controller/browser/hardware. Inspect quiet and intense scenes, reduced motion, grayscale, connection recovery and safe visual intensity in that environment.

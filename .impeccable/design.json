@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-10-04T00:00:00Z",
+  "generatedAt": "2026-10-04T13:03:52.879949+00:00",
   "title": "Design System: The Allium",
   "extensions": {
     "colorMeta": {
@@ -98,17 +98,32 @@
       {
         "name": "scene-smoothing",
         "value": "400ms exponential time constant",
-        "purpose": "Renderer channel-weight interpolation."
+        "purpose": "Choreography focus-weight interpolation."
       },
       {
         "name": "pitch-smoothing",
-        "value": "250ms exponential time constant",
+        "value": "220ms exponential time constant",
         "purpose": "Renderer pitch response."
       },
       {
         "name": "intensity-smoothing",
-        "value": "180ms exponential time constant",
+        "value": "280ms exponential time constant",
         "purpose": "Renderer intensity response."
+      },
+      {
+        "name": "energy-smoothing",
+        "value": "650ms exponential time constant",
+        "purpose": "Shared musical energy response."
+      },
+      {
+        "name": "history-smoothing",
+        "value": "180ms exponential time constant at 30Hz",
+        "purpose": "Melodic pitch-history samples."
+      },
+      {
+        "name": "section-envelope",
+        "value": "2000ms smoothstep envelope",
+        "purpose": "Blend outgoing and incoming melodic input without clearing history or blooms."
       }
     ],
     "breakpoints": [
@@ -147,28 +162,28 @@
     "instrumentMappings": {
       "vocals": {
         "colorToken": "magenta",
-        "shape": "Smooth filled ribbons with pink leading highlight"
+        "shape": "Braided luminous pitch-history trails with fine strands and soft envelopes"
       },
       "guitar": {
         "colorToken": "sky",
-        "shape": "Angular twin paths"
+        "shape": "Sharper pitch-history contour, angular detail and attack-triggered branching filaments"
       },
       "drums": {
         "colorToken": "yellow",
-        "shape": "Localized rings and radial ticks"
+        "shape": "Localized pressure rings and radial ticks; kick pressure deforms nearby melodic paths and bass currents"
       },
       "bass": {
         "colorToken": "teal",
-        "shape": "Broad grounded layered bands"
+        "shape": "Broad layered grounded currents"
       },
       "piano": {
         "colorToken": "piano",
-        "shape": "Diamonds, stems and harmonic constellations"
+        "shape": "Chord-triggered allium-flower blooms with diamond/stem note constellations and connecting traces"
       }
     },
     "accessibility": {
-      "reducedMotion": "Removes travel, particle drift, ring expansion and rising note motion; CSS follows the operating-system preference.",
-      "highContrast": "Independent companion uses white canvas voices, muted #e3e8ff and border #8895c0.",
+      "reducedMotion": "Removes travelling history, particle drift, bloom unrolling and rotation, pressure expansion and nearby-path deformation, and guitar attack filaments; preserves instrument shapes and musical pitch/intensity response. CSS follows the operating-system preference.",
+      "highContrast": "Independent companion uses white score voices, muted #e3e8ff and border #8895c0.",
       "manualCaptionLimit": 180
     },
     "implementationSources": [
@@ -178,8 +193,45 @@
       "src/components/Score.tsx",
       "src/engine/types.ts",
       "src/engine/renderer.ts",
-      "src/engine/session.ts"
-    ]
+      "src/engine/session.ts",
+      "src/engine/choreography.ts",
+      "src/engine/backends.ts",
+      "src/engine/webgl.ts"
+    ],
+    "motionModes": {
+      "calm": {
+        "phaseScale": 0.18,
+        "decorativeParticleScale": 0.15,
+        "strengthScale": 0.62,
+        "detail": "Smaller blooms and lighter melodic detail."
+      }
+    },
+    "renderer": {
+      "model": "Normalized musical events and continuous input frames feed shared Choreography geometry.",
+      "webgl": "PixiJS textured meshes with a single batched bounded light field.",
+      "canvas": "Same geometry with bounded 24-pass Gaussian-feathered soft strokes.",
+      "fallback": "Fresh Canvas on WebGL initialization failure or context loss; static SVG/DOM fallback retains captions and controls if both fail.",
+      "loop": "One requestAnimationFrame loop per score; React stays outside the frame loop.",
+      "historyRetention": "Section changes blend melodic envelopes over two seconds, preserving old history and existing blooms.",
+      "budgets": {
+        "historySamplesPerInstrument": 240,
+        "historyHz": 30,
+        "historySeconds": 8,
+        "pressureEvents": 12,
+        "chordGroups": 24,
+        "guitarAttacks": 8,
+        "paths": 256,
+        "pointsPerPath": 160,
+        "lights": 1200,
+        "companionLights": 180,
+        "previewDecorativeParticles": 240
+      },
+      "resolution": {
+        "maximumDpr": 1.5,
+        "lowerAdaptiveDpr": 1
+      },
+      "adaptation": "Sustained slow frames reduce particle density, secondary strands, bloom petals and pixel density."
+    }
   },
   "components": [
     {
@@ -223,8 +275,8 @@
     }
   ],
   "narrative": {
-    "northStar": "Living panoramic visual score",
-    "overview": "One continuous field carries distinct musical voices through theatrical editorial typography and solid captions. The user-pinned direction and approved code-first implementation are the visual authority; no supplied visual comp replaces them. UI copy and the development workflow remain English.\n\nThe score is warm, artistic and inclusive, with sparse complete gestures in quiet passages and localized energy in intense passages. Temporary text identity reserves the original logo placement until the supplied full, compact and high-contrast marks are available.",
+    "northStar": "Luminous Allium: living panoramic visual score",
+    "overview": "One continuous field carries distinct musical voices through theatrical editorial typography and solid captions. The user-pinned direction and approved code-first Luminous Allium implementation are the visual authority; no supplied visual comp replaces them. UI copy and the development workflow remain English.\n\nThe score is warm, artistic and inclusive: luminous braided trails, layered currents and allium-flower chord blooms retain musical structure through quiet and intense passages. The established UI, font, palette and route layouts continue to frame this concert choreography. Temporary text identity reserves the original logo placement until the supplied full, compact and high-contrast marks are available.",
     "keyCharacteristics": [
       "Continuous panoramic score with identifiable instrument shapes.",
       "Editorial hierarchy and a stable opaque caption band.",

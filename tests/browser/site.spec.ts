@@ -225,3 +225,63 @@ test("maximum focus intensity uses valid Canvas opacity and long Unicode cues fi
     ).toBe(true);
   }
 });
+
+test("GPU context loss replaces the canvas without losing demo or captions", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.goto("/experience");
+  await expect(page.locator(".score-renderer")).toHaveAttribute(
+    "data-renderer",
+    "webgl",
+  );
+  await page.getByRole("button", { name: "Play demo", exact: true }).click();
+  await page.evaluate(() =>
+    document
+      .querySelector(".score-renderer canvas")!
+      .dispatchEvent(new Event("webglcontextlost", { cancelable: true })),
+  );
+  await expect(page.locator(".score-renderer")).toHaveAttribute(
+    "data-renderer",
+    "canvas",
+  );
+  await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+  await expect(page.locator(".captions")).toBeVisible();
+  await page.waitForTimeout(500);
+  expect(errors).toEqual([]);
+});
+test("Canvas backend works when WebGL is unavailable and repeated route changes clean up initialization", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (e) => errors.push(e.message));
+  await page.addInitScript(() => {
+    const get = HTMLCanvasElement.prototype.getContext;
+    HTMLCanvasElement.prototype.getContext = function (
+      this: HTMLCanvasElement,
+      type: string,
+      options?: unknown,
+    ) {
+      if (String(type).startsWith("webgl") || type === "experimental-webgl")
+        return null;
+      return Reflect.apply(get, this, [type, options]);
+    } as typeof get;
+  });
+  await page.goto("/experience");
+  await expect(page.locator(".score-renderer")).toHaveAttribute(
+    "data-renderer",
+    "canvas",
+  );
+  for (let n = 0; n < 3; n++) {
+    await page
+      .getByRole("link", { name: "Visual language", exact: true })
+      .click();
+    await page.getByRole("link", { name: "Experience", exact: true }).click();
+  }
+  await expect(page.locator(".score-renderer")).toHaveAttribute(
+    "data-renderer",
+    "canvas",
+  );
+  expect(errors).toEqual([]);
+});

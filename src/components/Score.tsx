@@ -20,28 +20,37 @@ export function Score({
   highContrast = false,
   className = "",
   labels = false,
+  profile = "concert",
 }: { session: Session; className?: string; labels?: boolean } & RenderOptions) {
-  const canvas = useRef<HTMLCanvasElement>(null);
+  const host = useRef<HTMLDivElement>(null);
   const renderer = useRef<ScoreRenderer | null>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    try {
-      renderer.current = new ScoreRenderer(canvas.current!, session, {
-        instrument,
-        highContrast,
-      });
-    } catch {
-      setFailed(true);
-    }
-    return () => renderer.current?.dispose();
+    let active = true;
+    const instance = new ScoreRenderer(host.current!, session, {
+      instrument,
+      highContrast,
+      profile,
+    });
+    renderer.current = instance;
+    const fail = () => setFailed(true);
+    host.current!.addEventListener("scorefailure", fail);
+    void instance.initialize().catch(() => {
+      if (active) setFailed(true);
+    });
+    return () => {
+      active = false;
+      host.current?.removeEventListener("scorefailure", fail);
+      instance.dispose();
+    };
   }, [session]);
   useEffect(
-    () => renderer.current?.options({ instrument, highContrast }),
-    [instrument, highContrast],
+    () => renderer.current?.options({ instrument, highContrast, profile }),
+    [instrument, highContrast, profile],
   );
   return (
     <div className={`score ${className}`}>
-      <canvas ref={canvas} aria-hidden="true" />
+      <div className="score-renderer" ref={host} aria-hidden="true" />
       {failed && (
         <div className="score-fallback">
           <svg viewBox="0 0 800 240" aria-hidden="true">
