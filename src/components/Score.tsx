@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ScoreRenderer, type RenderOptions } from "../engine/renderer";
-import { Session } from "../engine/session";
+import { audio, ConcertSource } from "../engine/audio";
+import { concert, Session } from "../engine/session";
 import { demoCaption } from "../engine/music";
 import { instruments, colors, type Instrument } from "../engine/types";
 export function useSession(session: Session) {
@@ -27,11 +28,17 @@ export function Score({
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     let active = true;
-    const instance = new ScoreRenderer(host.current!, session, {
-      instrument,
-      highContrast,
-      profile,
-    });
+    const release = session === concert ? audio.retain() : () => {};
+    const instance = new ScoreRenderer(
+      host.current!,
+      session,
+      {
+        instrument,
+        highContrast,
+        profile,
+      },
+      session === concert ? new ConcertSource(session) : undefined,
+    );
     renderer.current = instance;
     const fail = () => setFailed(true);
     host.current!.addEventListener("scorefailure", fail);
@@ -42,6 +49,7 @@ export function Score({
       active = false;
       host.current?.removeEventListener("scorefailure", fail);
       instance.dispose();
+      release();
     };
   }, [session]);
   useEffect(
@@ -99,13 +107,14 @@ export function Captions({
   const cue =
     state.captionMode === "manual"
       ? state.manual
-      : demoCaption(time, state.section);
+      : state.mode === "demo"
+        ? demoCaption(time, state.section)
+        : null;
+  if (!state.captions) return null;
   return (
-    <div
-      className={`captions ${compact ? "compact" : ""} ${!state.captions ? "captions-off" : ""}`}
-    >
+    <div className={`captions ${compact ? "compact" : ""}`}>
       <div className="caption-content" aria-live="polite" aria-atomic="true">
-        {state.captions && cue ? (
+        {cue ? (
           <>
             <span className="caption-speaker">
               {cue.speaker || "SOUND"}
@@ -117,14 +126,8 @@ export function Captions({
           </>
         ) : (
           <>
-            <span className="caption-speaker">
-              {state.captions ? "CAPTIONS READY" : "CAPTIONS OFF"}
-            </span>
-            <p className="caption-rest">
-              {state.captions
-                ? "A little space between the words."
-                : "Enable captions in the controls."}
-            </p>
+            <span className="caption-speaker">CAPTIONS READY</span>
+            <p className="caption-rest">A little space between the words.</p>
           </>
         )}
       </div>

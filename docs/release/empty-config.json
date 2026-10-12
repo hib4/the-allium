@@ -1,0 +1,76 @@
+{
+  "version": 1,
+  "audio": {
+    "device": null,
+    "instruments": {
+      "vocals": {
+        "channels": [],
+        "sensitivity": 1.0,
+        "noiseDb": -60.0,
+        "pitch": true
+      },
+      "guitar": {
+        "channels": [],
+        "sensitivity": 1.0,
+        "noiseDb": -60.0,
+        "pitch": true
+      },
+      "drums": {
+        "channels": [],
+        "sensitivity": 1.0,
+        "noiseDb": -60.0,
+        "pitch": false
+      },
+      "bass": {
+        "channels": [],
+        "sensitivity": 1.0,
+        "noiseDb": -60.0,
+        "pitch": true
+      },
+      "piano": {
+        "channels": [],
+        "sensitivity": 1.0,
+        "noiseDb": -60.0,
+        "pitch": false
+      }
+    }
+  },
+  "visual": {
+    "mode": "standby",
+    "playing": false,
+    "anchor": 0,
+    "position": 0,
+    "section": "Quiet Section",
+    "sectionStart": 0,
+    "scene": "Ensemble",
+    "intensity": 0.65,
+    "particles": 0.6,
+    "motion": 0.65,
+    "captions": true,
+    "reduced": false,
+    "channels": {
+      "vocals": {
+        "mute": false,
+        "solo": false
+      },
+      "guitar": {
+        "mute": false,
+        "solo": false
+      },
+      "drums": {
+        "mute": false,
+        "solo": false
+      },
+      "bass": {
+        "mute": false,
+        "solo": false
+      },
+      "piano": {
+        "mute": false,
+        "solo": false
+      }
+    },
+    "manual": null,
+    "captionMode": "manual"
+  }
+}

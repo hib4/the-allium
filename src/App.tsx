@@ -9,6 +9,7 @@ import {
   useSearchParams,
 } from "react-router-dom";
 import QRCode from "qrcode";
+import { AudioDesk, useAudio, sourceLabel } from "./components/AudioDesk";
 import { concert } from "./engine/session";
 import {
   colors,
@@ -203,22 +204,30 @@ function Experience() {
   const [params, setParams] = useSearchParams();
   const performance = params.get("performance") === "1";
   const { state, status } = useSession(concert);
+  const connection = useAudio();
   const [error, setError] = useState("");
+  const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
     concert.setRole("display");
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") setParams({});
     };
+    const changed = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener("fullscreenchange", changed);
     window.addEventListener("keydown", key);
     return () => {
       concert.setRole("viewer");
+      document.removeEventListener("fullscreenchange", changed);
       window.removeEventListener("keydown", key);
     };
   }, [setParams]);
   const enter = async () => {
     setParams({ performance: "1" });
     try {
-      await document.documentElement.requestFullscreen?.();
+      if (!document.documentElement.requestFullscreen)
+        throw new Error("Fullscreen unsupported");
+      await document.documentElement.requestFullscreen();
+      setError("");
     } catch {
       setError("Fullscreen unavailable. Performance view is still active.");
     }
@@ -232,7 +241,12 @@ function Experience() {
             <Identity compact />
             <span className="stage-status">
               <span className="status-dot" />
-              {state.playing ? "DEMO PLAYING" : "DEMO PAUSED"}{" "}
+              {sourceLabel(
+                state.mode,
+                state.playing,
+                connection.available,
+                connection.packet?.status === "fixture",
+              ).toUpperCase()}{" "}
               <span>· {state.scene}</span>
             </span>
           </div>
@@ -245,7 +259,9 @@ function Experience() {
               <div>
                 <h1>See the music.</h1>
                 <p>
-                  A synthetic score. No microphone or live audio is connected.
+                  {state.mode === "demo"
+                    ? "A synthetic score. No microphone or live audio is connected."
+                    : "Audio follows the input assignments in the operator desk."}
                 </p>
               </div>
               <button className="button" onClick={enter}>
@@ -253,7 +269,7 @@ function Experience() {
               </button>
             </div>
             <div className="rehearsal-controls">
-              <DemoControls session={concert} />
+              {state.mode === "demo" && <DemoControls session={concert} />}
               <ScenePicker session={concert} />
               <div className="rehearsal-settings">
                 <Toggle
@@ -288,15 +304,19 @@ function Experience() {
         )}
       </main>
       {performance && (
-        <button
-          className="exit-performance"
-          onClick={() => {
-            setParams({});
-            if (document.fullscreenElement) void document.exitFullscreen();
-          }}
-        >
-          Exit performance view
-        </button>
+        <div className="presentation-actions" data-fullscreen={fullscreen}>
+          {!fullscreen && (
+            <button onClick={() => void enter()}>Enter fullscreen</button>
+          )}
+          <button
+            onClick={() => {
+              setParams({});
+              if (document.fullscreenElement) void document.exitFullscreen();
+            }}
+          >
+            Exit performance view
+          </button>
+        </div>
       )}
     </div>
   );
@@ -454,12 +474,27 @@ function CaptionEditor() {
           {state.captionMode === "demo" ? "SAMPLE CUES" : "MANUAL CUES"}
         </span>
       </div>
+      <Toggle
+        label="Show captions"
+        checked={state.captions}
+        onChange={(captions) => concert.update({ captions })}
+        disabled={status.locked}
+      />
+      <p className="panel-note">
+        {state.captions
+          ? "Captions are visible on the display."
+          : "Captions are hidden. Saved cues will appear when you show captions again."}
+      </p>
       <form
         onSubmit={(e) => {
           e.preventDefault();
           if (!text.trim()) return;
           concert.cue({ speaker: speaker.trim(), text: text.trim(), category });
-          setNotice("Caption sent to the display.");
+          setNotice(
+            state.captions
+              ? "Caption sent to the display."
+              : "Caption saved while hidden. Show captions to display it.",
+          );
         }}
       >
         <div className="caption-fields">
@@ -545,7 +580,26 @@ function CaptionEditor() {
 function Control() {
   const { state, status } = useSession(concert);
   const time = useTime(concert, 100);
-  const levels = continuous(time, state.section, state.sectionStart);
+  const connection = useAudio();
+  const demoLevels = continuous(time, state.section, state.sectionStart);
+  const levels =
+    state.mode === "demo"
+      ? demoLevels
+      : Object.fromEntries(
+          instruments.map((i) => [
+            i,
+            {
+              intensity:
+                state.mode === "live" && connection.available
+                  ? (connection.packet?.instruments[i].intensity ?? 0)
+                  : 0,
+            },
+          ]),
+        );
+  const active =
+    state.mode === "demo"
+      ? state.playing
+      : state.mode === "live" && connection.available;
   useEffect(() => {
     concert.setRole("operator");
     return () => concert.setRole("viewer");
@@ -591,12 +645,19 @@ function Control() {
                 ? state.captionMode === "demo"
                   ? "Sample cues ready"
                   : "Manual cues ready"
-                : "Off"}
+                : "Hidden"}
             </strong>
           </div>
           <div>
             <span>SOURCE</span>
-            <strong>Demo · {state.playing ? "playing" : "paused"}</strong>
+            <strong>
+              {sourceLabel(
+                state.mode,
+                state.playing,
+                connection.available,
+                connection.packet?.status === "fixture",
+              )}
+            </strong>
           </div>
         </div>
         {status.locked && (
@@ -606,10 +667,17 @@ function Control() {
         )}
         <div className="control-layout">
           <div className="control-left">
+            <AudioDesk />
             <section className="channel-desk">
               <div className="panel-heading">
                 <h2>Instrument channels</h2>
-                <span>SYNTHETIC INPUT</span>
+                <span>
+                  {state.mode === "demo"
+                    ? "SYNTHETIC INPUT"
+                    : connection.packet?.status === "fixture"
+                      ? "SYNTHETIC SOUNDCHECK"
+                      : "LIVE INPUT"}
+                </span>
               </div>
               <div className="channel-column-labels" aria-hidden="true">
                 <span>CHANNEL</span>
@@ -627,18 +695,15 @@ function Control() {
                     <meter
                       min="0"
                       max="1"
-                      value={state.playing ? levels[i].intensity : 0}
-                      aria-label={`${i} synthetic input level`}
+                      value={active ? levels[i].intensity : 0}
+                      aria-label={`${i} ${state.mode === "demo" ? "synthetic" : "live"} input level`}
                     />
                     <span>
-                      {state.playing
-                        ? Math.round(levels[i].intensity * 100)
-                        : 0}
-                      %
+                      {active ? Math.round(levels[i].intensity * 100) : 0}%
                     </span>
                   </div>
                   <span className="channel-state">
-                    {state.playing && levels[i].intensity > 0.1
+                    {active && levels[i].intensity > 0.1
                       ? "Active"
                       : "Inactive"}
                   </span>
@@ -725,12 +790,7 @@ function Control() {
                 onChange={(motion) => concert.update({ motion })}
                 disabled={status.locked}
               />
-              <Toggle
-                label="Captions"
-                checked={state.captions}
-                onChange={(captions) => concert.update({ captions })}
-                disabled={status.locked}
-              />
+
               <Toggle
                 label="Reduced motion"
                 checked={state.reduced}
@@ -738,14 +798,15 @@ function Control() {
                 disabled={status.locked}
               />
             </section>
-            <section className="demo-desk">
-              <h2>Demo transport</h2>
-              <DemoControls session={concert} />
-              <p className="panel-note">
-                Visual-only synthetic music. Live audio transport is not
-                connected.
-              </p>
-            </section>
+            {state.mode === "demo" && (
+              <section className="demo-desk">
+                <h2>Demo transport</h2>
+                <DemoControls session={concert} />
+                <p className="panel-note">
+                  Simulated music. Use Live for mapped audio inputs.
+                </p>
+              </section>
+            )}
           </aside>
         </div>
       </main>

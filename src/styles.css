@@ -750,18 +750,21 @@ select {
 .performance .captions p {
   font-size: clamp(24px, 4vh, 44px);
 }
-.exit-performance {
+.presentation-actions {
   position: fixed;
   right: 16px;
   bottom: 16px;
   z-index: 5;
+  display: flex;
+  gap: 8px;
   background: var(--surface);
-  opacity: 0;
-  pointer-events: none;
 }
-.exit-performance:focus-visible {
+.presentation-actions[data-fullscreen="true"] {
+  opacity: 0;
+}
+.presentation-actions:hover,
+.presentation-actions:focus-within {
   opacity: 1;
-  pointer-events: auto;
 }
 .fullscreen-error {
   position: fixed;
@@ -1166,9 +1169,28 @@ textarea {
 }
 .operator-preview {
   border: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 247px;
 }
 .operator-preview > .score {
-  height: 160px;
+  flex: 1;
+  min-height: 160px;
+}
+.operator-preview > .captions {
+  flex-shrink: 0;
+}
+.caption-editor > .toggle {
+  flex-direction: row;
+  margin-bottom: 8px;
+}
+.caption-editor > .toggle input {
+  width: 40px;
+  height: 28px;
+  padding: 0;
+}
+.caption-editor > .panel-note {
+  margin-bottom: 24px;
 }
 .visual-settings .toggle {
   border-top: 1px solid #202949;
@@ -1841,4 +1863,175 @@ textarea {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+/* Ui24R controls extend the existing operator desk vocabulary. */
+.audio-desk {
+  padding: 26px 0;
+  border-bottom: 1px solid var(--border, #353f65);
+}
+.audio-modes,
+.audio-save {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 18px 0;
+}
+.audio-modes button,
+.audio-desk button {
+  min-height: 44px;
+}
+.audio-modes button[aria-pressed="true"] {
+  background: #e3d1ff;
+  color: #05091c;
+  border-color: #e3d1ff;
+}
+.audio-status {
+  font-size: 16px;
+  line-height: 1.6;
+}
+.audio-device {
+  display: flex;
+  align-items: end;
+  gap: 16px;
+  margin: 20px 0;
+}
+.audio-device label {
+  flex: 1;
+  min-width: 0;
+}
+.audio-desk label {
+  font-size: 14px;
+  line-height: 1.5;
+}
+.audio-desk select,
+.audio-desk input[type="number"] {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  background: #0a1030;
+  color: white;
+  border: 1px solid #353f65;
+  border-radius: 6px;
+  padding: 10px;
+  font: inherit;
+}
+.audio-desk select {
+  text-overflow: ellipsis;
+}
+.audio-mapping {
+  border-top: 1px solid #353f65;
+}
+.audio-desk summary {
+  cursor: pointer;
+  min-height: 48px;
+  padding: 14px 0;
+  font-size: 16px;
+}
+.audio-mapping summary {
+  text-transform: capitalize;
+}
+.audio-mapping summary span {
+  display: inline-block;
+  margin-left: 16px;
+  font-size: 13px;
+  color: #aab4d4;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+.audio-mapping fieldset {
+  border: 0;
+  padding: 12px 0 24px;
+  min-width: 0;
+}
+.audio-mapping legend {
+  font-size: 14px;
+  padding: 0;
+}
+.usb-selection {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 12px;
+}
+.usb-selection label,
+.pitch-setting {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+.audio-desk input[type="checkbox"] {
+  accent-color: #e3d1ff;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+.audio-adjustments {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 16px 0;
+}
+.usb-meter-panel {
+  border-top: 1px solid #353f65;
+}
+.usb-meters > div {
+  display: grid;
+  grid-template-columns: minmax(125px, 1fr) 1fr 72px 36px;
+  gap: 12px;
+  align-items: center;
+  min-height: 36px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.usb-meters meter {
+  width: 100%;
+}
+.usb-meters strong {
+  color: #ffd84d;
+  font-size: 12px;
+}
+.audio-desk .form-notice {
+  overflow-wrap: anywhere;
+}
+.audio-desk summary:focus-visible {
+  outline: 2px solid #ffd84d;
+  outline-offset: 4px;
+}
+@media (max-width: 760px) {
+  .usb-selection {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 390px) {
+  .audio-device {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .audio-adjustments {
+    grid-template-columns: 1fr;
+  }
+  .usb-selection {
+    grid-template-columns: 1fr;
+  }
+  .usb-meters > div {
+    grid-template-columns: minmax(90px, 1fr) 1fr;
+    gap: 4px 8px;
+  }
+  .audio-mapping summary span {
+    display: block;
+    margin-left: 0;
+  }
+}
+
+.audio-save label {
+  min-width: 0;
+  max-width: 100%;
+}
+.audio-save input[type="file"] {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }

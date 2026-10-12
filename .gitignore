@@ -27,3 +27,15 @@ blob-report/
 *.log
 .DS_Store
 Thumbs.db
+
+# Venue-local audio configuration and Python environment
+audio_service/local-config.json
+audio_service/local-config.tmp
+.venv/
+__pycache__/
+.pytest_cache/
+audio_service/fixture-config.json
+audio_service/fixture-config.tmp
+
+# Portable release outputs
+artifacts/

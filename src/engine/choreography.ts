@@ -159,6 +159,9 @@ export class Choreography {
     piano: 0.45,
   };
   private energy = 0.28;
+  private mode = "";
+  private brightness: Partial<Record<Instrument, number>> = {};
+  private spectra: Partial<Record<Instrument, number[]>> = {};
   private phase = 0;
   private bassPhase = 0;
   private width = 1;
@@ -184,6 +187,16 @@ export class Choreography {
     options: RenderOptions = {},
     quality = 1,
   ): ScoreFrame {
+    if (this.mode !== state.mode) {
+      this.mode = state.mode;
+      this.lastTime = -1;
+      this.section = state.section;
+      this.sectionOrigin = state.sectionStart;
+      this.previousSection = undefined;
+      this.sectionAge = time;
+      for (const i of instruments) this.levels[i] = 0;
+      this.energy = 0;
+    }
     const previous = this.lastTime;
     const dt = previous < 0 ? 0 : clamp(time - previous, 0, 100);
     this.width = Math.max(1, width);
@@ -218,6 +231,8 @@ export class Choreography {
     const envelope = this.blend * this.blend * (3 - 2 * this.blend);
     const musicalDelta = previous < 0 ? 16 : dt;
     for (const i of instruments) {
+      this.brightness[i] = current[i].bands?.[2];
+      this.spectra[i] = current[i].spectrum;
       this.pitch[i] = mix(
         this.pitch[i],
         mix(outgoing[i].pitch, current[i].pitch, envelope),
@@ -404,6 +419,11 @@ export class Choreography {
   private strength(i: Instrument) {
     return (
       this.weights[i] *
+      // Quiet but valid live inputs stay legible at projection distance.
+      // Amplitude continues to control geometry; opacity uses a perceptual curve.
+      (this.state.mode === "demo"
+        ? 1
+        : 0.04 + 0.96 * Math.min(1, Math.pow(this.levels[i] / 0.05, 0.4))) *
       (0.35 + this.state.intensity * 0.65) *
       (this.state.scene === "Calm Mode" ? 0.62 : 1)
     );
@@ -519,7 +539,22 @@ export class Choreography {
           phraseArc +
           braid +
           strand;
-        if (!voice) y += Math.sin(j * 1.74 + this.phase) * h * 0.007 * level;
+        if (!voice)
+          y +=
+            Math.sin(j * 1.74 + this.phase) *
+            h *
+            0.007 *
+            level *
+            (this.brightness[i] === undefined
+              ? 1
+              : 0.5 + this.brightness[i]! * 2);
+        const spectrum = this.spectra[i];
+        if (spectrum)
+          y +=
+            (spectrum[Math.min(31, Math.floor(u * 32))] ?? 0) *
+            h *
+            0.012 *
+            level;
         if (this.weights.bass > 0.01)
           y +=
             Math.sin(u * Math.PI * 2 + this.bassPhase) *
@@ -576,10 +611,18 @@ export class Choreography {
         chorus ? 32 : 16,
       );
       const notes = chord.pitches;
+      // In Live, spectral groups describe register activity, not recognized notes.
+      const spectralGroups = this.spectra.piano?.filter(
+        (v) => v > 0.025,
+      ).length;
+      const noteCount =
+        this.state.mode === "live"
+          ? Math.max(1, Math.min(8, spectralGroups ?? 1))
+          : notes.length;
       let lastX = x,
         lastY = y;
-      for (let n = 0; n < notes.length; n++) {
-        const a = -Math.PI * 0.5 + (n / notes.length) * Math.PI * 2;
+      for (let n = 0; n < noteCount; n++) {
+        const a = -Math.PI * 0.5 + (n / noteCount) * Math.PI * 2;
         const nx = x + Math.cos(a) * radius * 0.5 * unfurl,
           ny = y + Math.sin(a) * radius * 0.5 * unfurl;
         const size = 5 + chord.intensity * 6;
@@ -669,10 +712,19 @@ export class Choreography {
       const kick = pressure.kind === "kick",
         hat = pressure.kind === "hat";
       const expansion = this.state.reduced ? 0 : age * 0.2 * this.state.motion;
-      const radius = h * ((kick ? 0.065 : hat ? 0.014 : 0.035) + expansion);
+      const radius =
+        h *
+        ((kick ? 0.065 : hat ? 0.014 : 0.035) + expansion) *
+        (this.state.mode === "demo"
+          ? 1
+          : 0.65 + 0.35 * Math.sqrt(pressure.intensity));
       const x = pressure.x * w,
         y = pressure.y * h;
-      const alpha = strength * pressure.intensity * fade * 1.4;
+      const attackVisibility =
+        this.state.mode === "demo"
+          ? pressure.intensity
+          : Math.min(1, Math.pow(pressure.intensity / 0.05, 0.4));
+      const alpha = strength * attackVisibility * fade * 1.4;
       const p = this.path(64, kick ? 2.4 : 1.2, palette.drums, alpha);
       if (p)
         for (let j = 0; j < p.count; j++) {

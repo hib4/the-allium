@@ -26,6 +26,7 @@ export class BrowserTransport implements Transport {
   }
 }
 const initial = (): SessionState => ({
+  mode: "demo",
   playing: false,
   anchor: Date.now(),
   position: 0,
@@ -49,6 +50,7 @@ export function validState(v: unknown): v is SessionState {
   if (!v || typeof v !== "object") return false;
   const s = v as SessionState;
   return (
+    ["demo", "live", "standby"].includes(s.mode) &&
     typeof s.playing === "boolean" &&
     Number.isFinite(s.anchor) &&
     Number.isFinite(s.position) &&
@@ -113,8 +115,10 @@ export class Session {
     }
   }
   time = () =>
-    this.state.position +
-    (this.state.playing ? Math.max(0, Date.now() - this.state.anchor) : 0);
+    this.state.mode !== "demo"
+      ? Date.now()
+      : this.state.position +
+        (this.state.playing ? Math.max(0, Date.now() - this.state.anchor) : 0);
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
     return () => {

@@ -46,6 +46,7 @@ export interface ChannelState {
   solo: boolean;
 }
 export interface SessionState {
+  mode: "demo" | "live" | "standby";
   playing: boolean;
   anchor: number;
   position: number;

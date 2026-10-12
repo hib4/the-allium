@@ -8,7 +8,13 @@ import {
 } from "./types";
 export type MusicalFrame = Record<
   Instrument,
-  { pitch: number; intensity: number }
+  {
+    pitch: number;
+    intensity: number;
+    bands?: number[];
+    spectrum?: number[];
+    confidence?: number;
+  }
 >;
 export interface MusicSource {
   events(
