@@ -145,3 +145,18 @@ def test_device_discovery_is_single_flight_and_retryable(tmp_path, monkeypatch):
         assert (await service.devices(None)).status == 200
         assert len(calls) == 2
     asyncio.run(run())
+
+def test_legacy_saved_config_and_backup_recovery(tmp_path):
+    import json
+    path = tmp_path / 'config.json'
+    legacy = default_config()
+    legacy['instruments']['guitar']['channels'] = [11, 12]
+    del legacy['instruments']['saxophone']
+    path.write_text(json.dumps(legacy))
+    assert Service(path).config['instruments']['guitar']['channels'] == [11, 12]
+    assert Service(path).config['instruments']['saxophone']['channels'] == []
+    path.with_suffix('.bak').write_text(json.dumps(legacy))
+    path.write_text('broken')
+    recovered = Service(path)
+    assert recovered.config['instruments']['guitar']['channels'] == [11, 12]
+    assert recovered.config['instruments']['saxophone']['pitch'] is True

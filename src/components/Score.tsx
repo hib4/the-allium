@@ -20,9 +20,8 @@ export function Score({
   instrument,
   highContrast = false,
   className = "",
-  labels = false,
   profile = "concert",
-}: { session: Session; className?: string; labels?: boolean } & RenderOptions) {
+}: { session: Session; className?: string } & RenderOptions) {
   const host = useRef<HTMLDivElement>(null);
   const renderer = useRef<ScoreRenderer | null>(null);
   const [failed, setFailed] = useState(false);
@@ -83,15 +82,8 @@ export function Score({
       <span className="sr-only">
         {instrument
           ? `${instrument} visual score`
-          : "Visual score: ribbons for vocals, angular paths for guitar, rings for drums, grounded waves for bass, diamonds for piano."}
+          : "Visual score: ribbons for vocals, angular paths for guitar, rings for drums, grounded waves for bass, diamonds for piano, looping curves for saxophone."}
       </span>
-      {labels && (
-        <div className="score-labels" aria-hidden="true">
-          <span className="vocal-label">VOCAL RIBBON</span>
-          <span className="guitar-label">GUITAR PATH</span>
-          <span className="bass-label">BASS WAVE</span>
-        </div>
-      )}
     </div>
   );
 }
@@ -164,6 +156,8 @@ export function InstrumentGlyph({ instrument }: { instrument: Instrument }) {
         <>
           <path d="M1 13Q13 3 24 13T47 13M1 20Q13 10 24 20T47 20M1 27Q13 17 24 27T47 27" />
         </>
+      ) : instrument === "saxophone" ? (
+        <path d="M1 23C10 23 18 3 11 3S6 28 22 25 36 3 29 3 24 28 47 17" />
       ) : (
         <>
           <path d="M8 8l5 5-5 5-5-5zM25 2l5 5-5 5-5-5zM40 13l5 5-5 5-5-5zM8 22v9M25 16v9M40 27v5" />

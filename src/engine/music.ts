@@ -16,14 +16,23 @@ export const arrangements: Record<Section, Record<Instrument, number>> = {
     drums: 0.24,
     bass: 0.4,
     piano: 0.45,
+    saxophone: 0.28,
   },
-  Chorus: { vocals: 0.95, guitar: 0.8, drums: 0.95, bass: 0.82, piano: 0.75 },
+  Chorus: {
+    vocals: 0.95,
+    guitar: 0.8,
+    drums: 0.95,
+    bass: 0.82,
+    piano: 0.75,
+    saxophone: 0.7,
+  },
   "Guitar Solo": {
     vocals: 0.12,
     guitar: 1,
     drums: 0.68,
     bass: 0.65,
     piano: 0.25,
+    saxophone: 0.22,
   },
   "Vocal Section": {
     vocals: 0.9,
@@ -31,6 +40,7 @@ export const arrangements: Record<Section, Record<Instrument, number>> = {
     drums: 0.26,
     bass: 0.4,
     piano: 0.48,
+    saxophone: 0.2,
   },
   "Drum Breakdown": {
     vocals: 0.08,
@@ -38,6 +48,7 @@ export const arrangements: Record<Section, Record<Instrument, number>> = {
     drums: 1,
     bass: 0.7,
     piano: 0.14,
+    saxophone: 0.12,
   },
 };
 export function eventsBetween(
@@ -96,6 +107,8 @@ export function eventsBetween(
         melody[(Math.floor(n / 2) + bar) % 16] + 5,
         0.72 + 0.28 * Math.sin((s / 16) * Math.PI),
       );
+    if (s === 2 || s === 6 || s === 10)
+      emit("saxophone", melody[(bar * 3 + Math.floor(s / 2)) % 16] + 7, 0.85);
     if (s === 0 || s === 10)
       for (const interval of [0, 4, 7])
         emit("piano", 60 + (bar % 4) * 2 + interval, 0.8);
@@ -127,7 +140,7 @@ export function continuous(
     const sustain =
       event.instrument === "bass"
         ? 2200
-        : event.instrument === "vocals"
+        : ["vocals", "saxophone"].includes(event.instrument)
           ? 1100
           : event.instrument === "guitar"
             ? 1400

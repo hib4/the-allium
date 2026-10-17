@@ -143,6 +143,7 @@ export class Choreography {
     drums: 1,
     bass: 1,
     piano: 1,
+    saxophone: 1,
   };
   private pitch: Record<Instrument, number> = {
     vocals: 65,
@@ -150,6 +151,7 @@ export class Choreography {
     drums: 36,
     bass: 36,
     piano: 65,
+    saxophone: 67,
   };
   private levels: Record<Instrument, number> = {
     vocals: 0.3,
@@ -157,6 +159,7 @@ export class Choreography {
     drums: 0.24,
     bass: 0.4,
     piano: 0.45,
+    saxophone: 0.28,
   };
   private energy = 0.28;
   private mode = "";
@@ -321,6 +324,7 @@ export class Choreography {
     this.bass();
     this.melody("vocals");
     this.melody("guitar");
+    this.saxophone();
     this.constellations(time);
     this.percussion(time);
     this.filaments(time);
@@ -567,6 +571,40 @@ export class Choreography {
       }
     }
   }
+  private saxophone() {
+    const strength = this.strength("saxophone");
+    if (strength < 0.005) return;
+    const level = this.levels.saxophone;
+    const layers = this.state.reduced || this.quality < 0.7 ? 2 : 4;
+    for (let k = layers - 1; k >= 0; k--) {
+      const p = this.path(
+        160,
+        ((1.5 + level * 5 + k * 2) * this.height) / 600,
+        palette.saxophone,
+        strength * (k === 0 ? 1 : 0.18),
+        k > 0,
+      );
+      if (!p) continue;
+      for (let j = 0; j < p.count; j++) {
+        const u = j / (p.count - 1);
+        const pitch = this.state.reduced
+          ? this.pitch.saxophone
+          : this.histories.saxophone.read(u);
+        const angle = u * Math.PI * 8 + this.phase * 0.55;
+        const envelope = Math.sin(u * Math.PI);
+        // Backtracking curves form open loops, distinct from the vocal ribbon.
+        const x = (u + Math.sin(angle) * 0.075 * envelope) * this.width;
+        const y =
+          (0.64 -
+            clamp((pitch - 67) / 17, -1, 1) * 0.16 +
+            Math.cos(angle) * 0.075 * envelope +
+            k * 0.004) *
+          this.height;
+        p.points[j * 2] = x;
+        p.points[j * 2 + 1] = y + this.displacement(x, y);
+      }
+    }
+  }
   private constellations(time: number) {
     const w = this.width,
       h = this.height,
@@ -804,7 +842,7 @@ export class Choreography {
         (calm ? 0.15 : 1),
     );
     for (let n = 0; n < count; n++) {
-      const i = instruments[n % 5];
+      const i = instruments[n % instruments.length];
       const strength = this.strength(i);
       if (strength < 0.01) continue;
       const u = hash(n + 8),

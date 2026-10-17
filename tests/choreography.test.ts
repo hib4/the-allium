@@ -89,3 +89,28 @@ it("reduced motion removes the travelling particle field and keeps shape informa
   expect(a.frame.pathCount).toBeGreaterThan(0);
   expect(snapshot(a)).toEqual(snapshot(b));
 });
+
+it("renders saxophone only when enabled, including reduced motion and grayscale", () => {
+  const s = state(),
+    model = new Choreography();
+  s.channels.saxophone.mute = true;
+  model.update(2000, s, 1440, 600, { instrument: "saxophone" });
+  expect(model.frame.pathCount).toBe(0);
+  s.channels.saxophone.mute = false;
+  for (let t = 2016; t <= 4000; t += 16)
+    model.update(t, s, 1440, 600, { instrument: "saxophone" });
+  expect(model.frame.pathCount).toBeGreaterThan(0);
+  expect(model.frame.paths[0].color).toBe(0xffaa66);
+  model.update(4016, { ...s, reduced: true }, 320, 600, {
+    instrument: "saxophone",
+    highContrast: true,
+  });
+  expect(model.frame.pathCount).toBe(2);
+  expect(model.frame.paths[0].color).toBe(0xffffff);
+  expect(Array.from(model.frame.paths[0].points).every(Number.isFinite)).toBe(
+    true,
+  );
+  s.channels.saxophone.mute = true;
+  model.update(4032, s, 1440, 600, { instrument: "saxophone" });
+  expect(model.frame.pathCount).toBe(0);
+});

@@ -1,6 +1,11 @@
 import { afterAll, describe, expect, it, vi } from "vitest";
 import { eventsBetween, demoCaption } from "../src/engine/music";
-import { instruments, validEvent, visibleChannel } from "../src/engine/types";
+import {
+  instruments,
+  validEvent,
+  visibleChannel,
+  upgradeInstrumentMap,
+} from "../src/engine/types";
 import { concert, Session, type Transport } from "../src/engine/session";
 import { EventSource } from "../src/engine/source";
 afterAll(() => concert.dispose());
@@ -123,6 +128,14 @@ describe("session controls", () => {
     a.update({ scene: "Guitar Focus", intensity: 0.3 });
     const b = new Session(true, transport());
     expect(b.state.scene).toBe("Guitar Focus");
+    a.update({
+      channels: { ...a.state.channels, saxophone: { mute: false, solo: true } },
+    });
+    expect(b.state.channels.saxophone).toEqual({ mute: false, solo: true });
+    a.update({ mode: "live" });
+    expect(b.state.channels.saxophone).toEqual({ mute: true, solo: false });
+    a.update({ mode: "demo" });
+    expect(b.state.channels.saxophone).toEqual({ mute: false, solo: false });
     a.cue({
       speaker: "Maya",
       category: "lyrics",
@@ -150,4 +163,62 @@ it("rejects oversized manual captions at the state boundary", () => {
   expect(s.state.manual).toBeNull();
   s.cue({ speaker: "Maya", category: "speech", text: "音".repeat(180) });
   expect(s.state.manual?.text.length).toBe(180);
+});
+
+it("starts saxophone visible in demo and allows explicit solo/mute", () => {
+  const s = new Session(false);
+  expect(s.state.channels.saxophone).toEqual({ mute: false, solo: false });
+  for (const i of instruments.filter((i) => i !== "saxophone"))
+    expect(visibleChannel(s.state, i)).toBe(true);
+  s.update({
+    channels: { ...s.state.channels, saxophone: { mute: false, solo: true } },
+  });
+  expect(visibleChannel(s.state, "saxophone")).toBe(true);
+  expect(visibleChannel(s.state, "vocals")).toBe(false);
+  s.update({
+    channels: { ...s.state.channels, saxophone: { mute: true, solo: true } },
+  });
+  expect(visibleChannel(s.state, "saxophone")).toBe(false);
+  s.dispose();
+});
+it("upgrades complete legacy maps without replacing explicit saxophone choices", () => {
+  const s = new Session(false);
+  const { saxophone, ...legacy } = s.state.channels;
+  expect(upgradeInstrumentMap(legacy, saxophone)).toEqual(s.state.channels);
+  const enabled = {
+    ...s.state.channels,
+    saxophone: { mute: false, solo: true },
+  };
+  expect(upgradeInstrumentMap(enabled, saxophone)).toBe(enabled);
+  expect(upgradeInstrumentMap({}, saxophone)).toEqual({});
+  s.dispose();
+});
+
+it("reapplies saxophone source defaults while preserving standby and explicit restore choices", () => {
+  const s = new Session(false);
+  const others = { ...s.state.channels };
+  s.update({ mode: "live" });
+  expect(s.state.channels.saxophone).toEqual({ mute: true, solo: false });
+  s.update({
+    channels: { ...s.state.channels, saxophone: { mute: false, solo: true } },
+  });
+  s.update({ intensity: 0.4, mode: "live" });
+  expect(s.state.channels.saxophone).toEqual({ mute: false, solo: true });
+  s.update({ mode: "standby" });
+  expect(s.state.channels.saxophone).toEqual({ mute: false, solo: true });
+  s.update({ mode: "live" });
+  expect(s.state.channels.saxophone).toEqual({ mute: true, solo: false });
+  s.update({ mode: "demo" });
+  expect(s.state.channels).toEqual(others);
+  s.update({
+    mode: "live",
+    channels: { ...s.state.channels, saxophone: { mute: false, solo: false } },
+  });
+  expect(s.state.channels.saxophone.mute).toBe(false);
+  s.update({
+    mode: "demo",
+    channels: { ...s.state.channels, saxophone: { mute: true, solo: false } },
+  });
+  expect(s.state.channels.saxophone.mute).toBe(true);
+  s.dispose();
 });

@@ -24,7 +24,7 @@ Translate musical rhythm, pitch, intensity and expression into an identifiable s
 
 ## Capabilities and Constraints
 
-Five routes, five instrument languages, scene focus modes, standalone Demo, Ui24R Live audio analysis through a local input-only Python/WebSocket service, configurable grouped USB channels, graceful Standby, and manual captions. macOS CoreAudio and Windows ASIO support require physical rehearsal verification. No source separation, recording, automatic transcription, venue relay or cross-device control sync. USB channel references never define venue instrument assignments.
+Five routes, six instrument languages, scene focus modes, standalone Demo, Ui24R Live audio analysis through a local input-only Python/WebSocket service, configurable grouped USB channels, graceful Standby, and manual captions. macOS CoreAudio and Windows ASIO support require physical rehearsal verification. No source separation, recording, automatic transcription, venue relay or cross-device control sync. USB channel references never define venue instrument assignments.
 
 ## Brand Commitments
 

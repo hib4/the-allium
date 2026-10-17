@@ -336,31 +336,6 @@ button svg,
 .score-fallback svg {
   width: 100%;
 }
-.score-labels {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: var(--muted);
-}
-.score-labels span {
-  position: absolute;
-  background: var(--bg);
-  padding: 4px 8px;
-}
-.vocal-label {
-  top: 24%;
-  left: 28%;
-}
-.guitar-label {
-  top: 55%;
-  right: 15%;
-}
-.bass-label {
-  bottom: 12%;
-  left: 15%;
-}
 .home-hero {
   position: relative;
   min-height: 740px;

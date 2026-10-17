@@ -66,7 +66,7 @@ These positions identify USB signals, not instruments. For example, USB 11 means
 
 ## Assign instruments and present
 
-- Expand vocals, guitar, drums, bass, or piano. Select one or several USB positions; grouping several drum microphones is supported. Power-domain aggregation prevents opposite-phase inputs from cancelling visual energy.
+- Expand vocals, guitar, drums, bass, piano, or saxophone. Select one or several USB positions; grouping several drum microphones is supported. Power-domain aggregation prevents opposite-phase inputs from cancelling visual energy.
 - Shared assignments are allowed and explicitly reported. Both visual instruments will then respond to the same signal.
 - Adjust **Sensitivity** (0.1–10) and **Noise threshold** (−90 to −10 dBFS) while checking the raw USB meters. Raw meters do not change when visual sensitivity/mute/solo changes. Defaults are 1× sensitivity and −60 dBFS.
 - Use **Apply input settings** to commit the whole configuration. Unsaved edits do not affect Live. Settings persist in `audio_service/local-config.json`; `--config PATH` selects another file. Conflicting edits receive a refresh/retry message; discard edits to load current settings.
@@ -82,7 +82,9 @@ Analysis uses 512-sample hops (10.7 ms) and a rolling 2,048-sample Hann FFT (42.
 
 RMS and peaks measure amplitude. Spectral energy is divided into bass (20–250 Hz), mid (250–4,000 Hz), and treble (4,000–24,000 Hz). Thirty-two spectrum bins drive fine visual texture. Spectral-flux onset detection drives localized beat/attack effects; this is onset detection, not a guaranteed tempo/BPM tracker. Drum articulation is a heuristic from band balance, not reliable drum-source recognition.
 
-Confidence-gated autocorrelation estimates monophonic pitch for vocals, guitar, and bass when enabled. Chords, distortion, bleed, or multiple singers can reduce accuracy. Low-confidence passages use spectral register instead of presenting a confident note estimate. Live piano blooms reflect attacks and spectral/register activity; they do not claim to identify exact notes or chords. Existing tutorial examples remain synthetic demonstrations of the visual language.
+Saxophone is visible in Demo and starts visually muted when switching to Live. Switching back to Demo enables it again. It has no USB inputs assigned by default. Unmute its channel after mapping and applying inputs.
+
+Confidence-gated autocorrelation estimates monophonic pitch for vocals, guitar, bass, and saxophone when enabled. Chords, distortion, bleed, or multiple singers can reduce accuracy. Low-confidence passages use spectral register instead of presenting a confident note estimate. Live piano blooms reflect attacks and spectral/register activity; they do not claim to identify exact notes or chords. Existing tutorial examples remain synthetic demonstrations of the visual language.
 
 Live opacity uses a continuous perceptual curve so quiet mapped signals remain visible; amplitude still controls width, size, and pressure. Silence retains only a faint branded field.
 

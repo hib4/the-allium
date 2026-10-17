@@ -208,6 +208,15 @@ function Experience() {
   const [error, setError] = useState("");
   const [fullscreen, setFullscreen] = useState(false);
   useEffect(() => {
+    // Let existing operator tabs synchronize before starting a standalone demo.
+    const autoplay = window.setTimeout(() => {
+      const { state, status } = concert.getSnapshot();
+      if (state.mode === "demo" && !state.playing && !status.operators)
+        concert.play(true);
+    }, 500);
+    return () => window.clearTimeout(autoplay);
+  }, []);
+  useEffect(() => {
     concert.setRole("display");
     const key = (e: KeyboardEvent) => {
       if (e.key === "Escape") setParams({});
@@ -250,7 +259,7 @@ function Experience() {
               <span>· {state.scene}</span>
             </span>
           </div>
-          <Score session={concert} labels={!performance} />
+          <Score session={concert} />
           <Captions session={concert} />
         </div>
         {!performance && (
@@ -348,6 +357,12 @@ const lessons: Record<
     detail:
       "Low notes become broad waves near the ground. Their weight and movement hold the other instruments together.",
     mapping: "Low pitch → grounded position · Intensity → wave width",
+  },
+  saxophone: {
+    title: "Follow each breath.",
+    detail:
+      "Looping curves follow the saxophone’s phrases. Higher notes lift the loops; stronger playing makes the line thicker.",
+    mapping: "Pitch → height · Intensity → line thickness",
   },
   piano: {
     title: "Watch harmony appear.",

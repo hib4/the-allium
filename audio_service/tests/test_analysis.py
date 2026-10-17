@@ -92,3 +92,29 @@ def test_shared_channels_are_allowed_and_reset_is_clean():
     analyzer = Analyzer(config)
     analyzer.process(np.zeros((HOP, 32), np.float32), 0)
     assert analyzer.drain_events() == []
+
+def test_legacy_config_adds_saxophone_and_preserves_assignments():
+    config = configured((11, 12))
+    del config['instruments']['saxophone']
+    upgraded = validate_config(config)
+    assert upgraded['instruments']['guitar']['channels'] == [11, 12]
+    assert upgraded['instruments']['saxophone'] == default_config()['instruments']['saxophone']
+    assert 'saxophone' not in config['instruments']
+    del config['instruments']['bass']
+    with pytest.raises(ValueError):
+        validate_config(config)
+
+
+def test_saxophone_pitch_and_unmapped_silence():
+    config = default_config()
+    config['instruments']['saxophone']['channels'] = [16]
+    analyzer = Analyzer(config)
+    for n in range(8):
+        block = np.zeros((HOP, 32), np.float32)
+        block[:, 15] = tone(440, start=n*HOP)
+        _, features = analyzer.process(block, n*HOP/RATE*1000)
+    assert features['saxophone']['intensity'] > .4
+    assert features['saxophone']['pitch'] == pytest.approx(69, abs=.15)
+    assert features['saxophone']['confidence'] > .75
+    assert features['guitar']['intensity'] == 0
+    assert any(e['instrument'] == 'saxophone' for e in analyzer.drain_events())

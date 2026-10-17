@@ -7,7 +7,12 @@ import {
   type AudioDevice,
 } from "../engine/audio";
 import { concert, validState } from "../engine/session";
-import { instruments, colors, type Instrument } from "../engine/types";
+import {
+  instruments,
+  colors,
+  upgradeInstrumentMap,
+  type Instrument,
+} from "../engine/types";
 import { useSession } from "./Score";
 
 export function useAudio() {
@@ -130,8 +135,18 @@ export function AudioDesk() {
     try {
       if (file.size > 65536) throw new Error("Settings file is too large.");
       const value = JSON.parse(await file.text());
+      if (value?.audio && value?.visual) {
+        value.audio.instruments = upgradeInstrumentMap(
+          value.audio.instruments,
+          emptyConfig().instruments.saxophone,
+        );
+        value.visual.channels = upgradeInstrumentMap(value.visual.channels, {
+          mute: true,
+          solo: false,
+        });
+      }
       if (
-        value.version !== 1 ||
+        value?.version !== 1 ||
         !validConfig(value.audio) ||
         !validState(value.visual)
       )

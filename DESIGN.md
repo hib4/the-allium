@@ -17,6 +17,7 @@ colors:
   muted: "#aab4d4"
   border: "#353f65"
   piano: "#C4A5FF"
+  saxophone: "#FFAA66"
 typography:
   display:
     fontFamily: "Atkinson Hyperlegible Next, sans-serif"
@@ -100,7 +101,7 @@ The navy field supports bright musical voices, softened editorial accents and le
 ### Primary
 
 - Lilac fills primary actions; pink marks their hover state, emphasized headline words and active navigation.
-- Magenta identifies vocals; sky identifies guitar; yellow identifies drums; teal identifies bass; the separate piano lavender identifies piano.
+- Magenta identifies vocals; sky identifies guitar; yellow identifies drums; teal identifies bass; the separate piano lavender identifies piano; amber identifies saxophone through looping curves that follow pitch and intensity.
 
 ### Neutral
 

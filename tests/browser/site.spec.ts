@@ -1,4 +1,66 @@
 import { test, expect } from "@playwright/test";
+
+test("Experience autoplays once, removes score titles, and preserves manual pause", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto("/experience");
+  await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+  await expect(page.locator(".score-labels")).toHaveCount(0);
+  await expect(page.locator(".score .sr-only")).toContainText("Visual score:");
+  await page.screenshot({
+    path: ".impeccable/review/experience-autoplay-desktop.png",
+    fullPage: true,
+  });
+  await page.setViewportSize({ width: 320, height: 800 });
+  await page.waitForTimeout(350);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+  ).toBe(true);
+  await page.screenshot({
+    path: ".impeccable/review/experience-autoplay-mobile.png",
+    fullPage: true,
+  });
+  await page.getByRole("button", { name: "Pause", exact: true }).click();
+  await page.waitForTimeout(750);
+  await expect(page.getByText("DEMO PAUSED")).toBeVisible();
+  await page.getByRole("button", { name: "Performance view", exact: true }).click();
+  await page.waitForTimeout(750);
+  await expect(page.getByText("DEMO PAUSED")).toBeVisible();
+});
+
+for (const mode of ["live", "standby"] as const) {
+  test(`Experience autoplay preserves ${mode} mode`, async ({ page }) => {
+    await page.goto("/");
+    await page.evaluate(async (mode) => {
+      const path = "/src/engine/session.ts";
+      const { concert } = await import(path);
+      concert.update({ mode, playing: false });
+    }, mode);
+    await page.getByRole("link", { name: "Experience", exact: true }).click();
+    await page.waitForTimeout(750);
+    const state = await page.evaluate(async () => {
+      const path = "/src/engine/session.ts";
+      const { concert } = await import(path);
+      return { mode: concert.state.mode, playing: concert.state.playing };
+    });
+    expect(state).toEqual({ mode, playing: false });
+  });
+}
+
+test("leaving Experience cancels pending autoplay", async ({ page }) => {
+  await page.goto("/");
+  await page.getByRole("link", { name: "Experience", exact: true }).click();
+  await page.getByRole("link", { name: "Visual language", exact: true }).click();
+  await page.waitForTimeout(750);
+  const playing = await page.evaluate(async () => {
+    const path = "/src/engine/session.ts";
+    const { concert } = await import(path);
+    return concert.state.playing;
+  });
+  expect(playing).toBe(false);
+});
+
 test("operator controls a display tab and sends readable Unicode captions", async ({
   context,
   page,
@@ -8,6 +70,8 @@ test("operator controls a display tab and sends readable Unicode captions", asyn
   await display.goto("/experience");
   await page.bringToFront();
   await expect(page.getByText("1 display connected")).toBeVisible();
+  await display.waitForTimeout(750);
+  await expect(display.getByText("DEMO PAUSED")).toBeVisible();
   await page.getByRole("button", { name: "Play demo", exact: true }).click();
   await expect(display.getByText("DEMO PLAYING")).toBeVisible();
   await page.getByRole("button", { name: "Guitar Focus", exact: true }).click();
@@ -117,7 +181,6 @@ test("Canvas failure leaves readable captions and functional controls", async ({
       "Animated score unavailable. Captions and controls remain available.",
     ),
   ).toBeVisible();
-  await page.getByRole("button", { name: "Play demo", exact: true }).click();
   await expect(page.getByText("DEMO PLAYING")).toBeVisible();
   await expect(
     page.getByText("This space belongs to all of us."),
@@ -236,7 +299,7 @@ test("GPU context loss replaces the canvas without losing demo or captions", asy
     "data-renderer",
     "webgl",
   );
-  await page.getByRole("button", { name: "Play demo", exact: true }).click();
+  await expect(page.getByText("DEMO PLAYING")).toBeVisible();
   await page.evaluate(() =>
     document
       .querySelector(".score-renderer canvas")!
@@ -284,4 +347,129 @@ test("Canvas backend works when WebGL is unavailable and repeated route changes 
     "canvas",
   );
   expect(errors).toEqual([]);
+});
+
+for (const backend of ["webgl", "canvas"] as const) {
+  test(`saxophone previews stay local and render with ${backend}`, async ({
+    page,
+    context,
+  }) => {
+    if (backend === "canvas")
+      await context.addInitScript(() => {
+        const get = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function (
+          this: HTMLCanvasElement,
+          type: string,
+          options?: unknown,
+        ) {
+          if (type.includes("webgl")) return null;
+          return Reflect.apply(get, this, [type, options]);
+        } as typeof get;
+      });
+    await page.goto("/control");
+    const mute = page.getByRole("button", {
+      name: "Mute saxophone visualization",
+      exact: true,
+    });
+    await expect(mute).toHaveAttribute("aria-pressed", "false");
+    await mute.click();
+    await page.getByRole("button", { name: "Play demo", exact: true }).click();
+    const preview = await context.newPage();
+    await preview.goto("/tutorial");
+    await preview.getByRole("button", { name: /saxophone/i }).click();
+    await expect(
+      preview.getByRole("heading", { name: "Follow each breath." }),
+    ).toBeVisible();
+    await expect(preview.locator(".score-renderer")).toHaveAttribute(
+      "data-renderer",
+      backend,
+    );
+    await preview.waitForTimeout(1000);
+    await preview.screenshot({
+      path: `.impeccable/review/saxophone-${backend}-desktop.png`,
+      fullPage: true,
+    });
+    await preview.setViewportSize({ width: 320, height: 800 });
+    await preview.waitForTimeout(350);
+    await preview.screenshot({
+      path: `.impeccable/review/saxophone-${backend}-mobile.png`,
+      fullPage: true,
+    });
+    expect(
+      await preview.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await expect(mute).toHaveAttribute("aria-pressed", "true");
+    await mute.click();
+    await expect(mute).toHaveAttribute("aria-pressed", "false");
+    const display = await context.newPage();
+    await display.goto("/experience");
+    await expect
+      .poll(() =>
+        display.evaluate(async () => {
+          const path = "/src/engine/session.ts";
+          const { concert } = await import(path);
+          return concert.state.channels.saxophone.mute;
+        }),
+      )
+      .toBe(false);
+    await mute.click();
+    await expect
+      .poll(() =>
+        display.evaluate(async () => {
+          const path = "/src/engine/session.ts";
+          const { concert } = await import(path);
+          return concert.state.channels.saxophone.mute;
+        }),
+      )
+      .toBe(true);
+    await preview.goto("/");
+    await preview
+      .getByRole("button", { name: "saxophone", exact: true })
+      .click();
+    await expect(preview.locator(".score .sr-only")).toHaveText(
+      "saxophone visual score",
+    );
+  });
+}
+
+test("all four demo pages render saxophone in ensembles and after individual selections", async ({
+  page,
+}) => {
+  for (const route of ["/", "/experience", "/tutorial", "/follow"]) {
+    await page.goto(`${route}?renderer=canvas`);
+    if (route === "/experience")
+      await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+    if (route === "/tutorial")
+      await page.getByRole("button", { name: "Together", exact: true }).click();
+    const hasAmber = () =>
+      page.locator(".score-renderer canvas").evaluate((canvas) => {
+        const c = canvas as HTMLCanvasElement;
+        const data = c
+          .getContext("2d")!
+          .getImageData(0, 0, c.width, c.height).data;
+        let amber = 0;
+        for (let i = 0; i < data.length; i += 4)
+          if (
+            data[i] > 40 &&
+            data[i] > data[i + 1] * 1.3 &&
+            data[i + 1] > data[i + 2] * 1.3
+          )
+            amber++;
+        return amber;
+      });
+    await expect.poll(hasAmber).toBeGreaterThan(30);
+    if (route !== "/experience") {
+      await page.getByRole("button", { name: /saxophone/i }).click();
+      await expect.poll(hasAmber).toBeGreaterThan(30);
+      await page
+        .getByRole("button", {
+          name: route === "/tutorial" ? "Together" : "All instruments",
+          exact: true,
+        })
+        .click();
+      await expect.poll(hasAmber).toBeGreaterThan(30);
+    }
+  }
 });

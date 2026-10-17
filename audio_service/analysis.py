@@ -1,7 +1,7 @@
 """Bounded, hardware-independent multichannel feature extraction."""
 import numpy as np
 
-INSTRUMENTS = ('vocals', 'guitar', 'drums', 'bass', 'piano')
+INSTRUMENTS = ('vocals', 'guitar', 'drums', 'bass', 'piano', 'saxophone')
 RATE = 48000
 WINDOW = 2048
 HOP = 512
@@ -9,7 +9,7 @@ HOP = 512
 
 def default_config():
     return {'device': None, 'instruments': {
-        name: {'channels': [], 'sensitivity': 1.0, 'noiseDb': -60.0, 'pitch': name in ('vocals', 'guitar', 'bass')}
+        name: {'channels': [], 'sensitivity': 1.0, 'noiseDb': -60.0, 'pitch': name in ('vocals', 'guitar', 'bass', 'saxophone')}
         for name in INSTRUMENTS}}
 
 
@@ -21,8 +21,12 @@ def validate_config(value):
                                not all(isinstance(v, str) and 0 < len(v) <= 200 for v in device.values())):
         raise ValueError('Choose an audio device and host API.')
     groups = value['instruments']
+    # Upgrade only the complete legacy five-instrument shape.
+    if isinstance(groups, dict) and set(groups) == set(INSTRUMENTS) - {'saxophone'}:
+        groups = {**groups, 'saxophone': default_config()['instruments']['saxophone']}
+        value = {**value, 'instruments': groups}
     if not isinstance(groups, dict) or set(groups) != set(INSTRUMENTS):
-        raise ValueError('Configure all five instruments.')
+        raise ValueError('Configure all six instruments.')
     for name, group in groups.items():
         if not isinstance(group, dict) or set(group) != {'channels', 'sensitivity', 'noiseDb', 'pitch'}:
             raise ValueError(f'Invalid settings for {name}.')
@@ -112,7 +116,7 @@ class Analyzer:
             self.flux[name] = history[-90:]
             self.previous[name] = magnitude
             note, confidence = (None, 0.)
-            if active and settings['pitch'] and name in ('vocals', 'guitar', 'bass'):
+            if active and settings['pitch'] and name in ('vocals', 'guitar', 'bass', 'saxophone'):
                 strongest = indexes[np.argmax(rms[indexes])]
                 note, confidence = self.pitch(self.samples[:, strongest])
             bins = [float(np.clip(np.sqrt(v.mean()) / WINDOW * 8 * settings['sensitivity'], 0, 1)) if active else 0. for v in np.array_split(spectrum, 32)]

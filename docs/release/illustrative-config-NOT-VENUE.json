@@ -44,6 +44,12 @@
         "sensitivity": 1.0,
         "noiseDb": -60.0,
         "pitch": false
+      },
+      "saxophone": {
+        "channels": [],
+        "sensitivity": 1,
+        "noiseDb": -60,
+        "pitch": true
       }
     }
   },
@@ -80,6 +86,10 @@
       },
       "piano": {
         "mute": false,
+        "solo": false
+      },
+      "saxophone": {
+        "mute": true,
         "solo": false
       }
     },

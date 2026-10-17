@@ -171,7 +171,7 @@ test("Demo works with no service and has no public runtime dependencies", async 
   expect(external).toEqual([]);
 });
 
-test("measures the complete five-instrument projection under synthetic multichannel load", async ({
+test("measures the complete six-instrument projection under synthetic multichannel load", async ({
   page,
   request,
   context,
@@ -183,12 +183,31 @@ test("measures the complete five-instrument projection under synthetic multichan
     "drums",
     "bass",
     "piano",
+    "saxophone",
   ].entries())
     settings.config.instruments[instrument].channels =
       instrument === "drums" ? [13, 18, 23] : [11 + index];
   await request.put("/api/config", { data: settings });
   await page.goto("/control");
   await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(
+    page.getByRole("button", {
+      name: "Mute saxophone visualization",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByRole("button", { name: "Mute saxophone visualization", exact: true })
+    .click();
+  await expect
+    .poll(async () =>
+      Number(
+        await page
+          .getByLabel("saxophone live input level")
+          .getAttribute("value"),
+      ),
+    )
+    .toBeGreaterThan(0.05);
   const operator = page;
   page = await context.newPage();
   await page.goto("/experience?performance=1");
@@ -424,4 +443,56 @@ test("hiding captions removes the band, fills the stage and preserves cues acros
   await expect(
     other.getByLabel("Show captions", { exact: true }),
   ).toBeDisabled();
+});
+
+test("legacy settings restore preserves mappings and adds muted saxophone", async ({
+  page,
+}) => {
+  await page.goto("/control");
+  await expect(
+    page.getByText("SERVICE CONNECTED", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByText("Settings backup and troubleshooting", { exact: true })
+    .click();
+  const download = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Export settings", exact: true })
+    .click();
+  const file = await download;
+  const stream = await file.createReadStream();
+  const chunks = [];
+  for await (const chunk of stream) chunks.push(chunk);
+  const saved = JSON.parse(Buffer.concat(chunks).toString());
+  delete saved.audio.instruments.saxophone;
+  delete saved.visual.channels.saxophone;
+  saved.audio.instruments.guitar.channels = [11, 12];
+  await page.getByLabel("Restore settings").setInputFiles({
+    name: "legacy.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(saved)),
+  });
+  await expect(
+    page.getByText("Backup downloaded.", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", {
+      name: "Mute saxophone visualization",
+      exact: true,
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
+  await page
+    .getByRole("button", { name: "Apply input settings", exact: true })
+    .click();
+  await expect(
+    page.getByText("Input settings saved.", { exact: false }),
+  ).toBeVisible();
+  const { config } = await (await page.request.get("/api/config")).json();
+  expect(config.instruments.guitar.channels).toEqual([11, 12]);
+  expect(config.instruments.saxophone).toEqual({
+    channels: [],
+    sensitivity: 1,
+    noiseDb: -60,
+    pitch: true,
+  });
 });

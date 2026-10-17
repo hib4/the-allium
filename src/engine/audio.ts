@@ -64,7 +64,7 @@ export const emptyConfig = (): AudioConfig => ({
         channels: [] as number[],
         sensitivity: 1,
         noiseDb: -60,
-        pitch: ["guitar", "vocals", "bass"].includes(i),
+        pitch: ["guitar", "vocals", "bass", "saxophone"].includes(i),
       },
     ]),
   ) as AudioConfig["instruments"],
@@ -333,6 +333,7 @@ export class ConcertSource implements MusicSource {
     drums: 60,
     bass: 39,
     piano: 65,
+    saxophone: 67,
   };
   constructor(
     private session: Session,

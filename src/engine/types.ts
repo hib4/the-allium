@@ -4,6 +4,7 @@ export const instruments = [
   "drums",
   "bass",
   "piano",
+  "saxophone",
 ] as const;
 export type Instrument = (typeof instruments)[number];
 export const scenes = [
@@ -68,6 +69,7 @@ export const colors: Record<Instrument, string> = {
   drums: "#FFD84D",
   bass: "#00B3A7",
   piano: "#C4A5FF",
+  saxophone: "#FFAA66",
 };
 export const descriptions: Record<Instrument, string> = {
   vocals: "Follow the ribbon to follow the melody.",
@@ -75,6 +77,7 @@ export const descriptions: Record<Instrument, string> = {
   drums: "Rhythm appears as pulses. Each impact has its own weight.",
   bass: "Broad, grounded waves carry the low musical energy.",
   piano: "Individual notes gather into harmonic constellations.",
+  saxophone: "Looping curves rise and fall with each breath of the melody.",
 };
 export function visibleChannel(state: SessionState, instrument: Instrument) {
   const anySolo = instruments.some((i) => state.channels[i].solo);
@@ -98,4 +101,17 @@ export function validEvent(v: unknown): v is MusicEvent {
     (e.confidence === undefined ||
       (Number.isFinite(e.confidence) && e.confidence >= 0 && e.confidence <= 1))
   );
+}
+
+/** Add the new channel only to a complete legacy instrument map. */
+export function upgradeInstrumentMap(
+  value: unknown,
+  saxophone: unknown,
+): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  const keys = Object.keys(value);
+  const legacy = instruments.filter((i) => i !== "saxophone");
+  return keys.length === legacy.length && legacy.every((i) => keys.includes(i))
+    ? { ...value, saxophone }
+    : value;
 }

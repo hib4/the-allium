@@ -216,6 +216,18 @@ export class Session {
   update(patch: Partial<SessionState>) {
     if (this.status.locked) return;
     const state = { ...this.state, ...patch };
+    // Explicit restored channels win; Standby retains the current choices.
+    if (
+      patch.mode !== undefined &&
+      patch.mode !== this.state.mode &&
+      (patch.mode === "demo" || patch.mode === "live") &&
+      patch.channels?.saxophone === undefined
+    ) {
+      state.channels = {
+        ...state.channels,
+        saxophone: { mute: patch.mode === "live", solo: false },
+      };
+    }
     if (!validState(state)) return;
     this.state = state;
     this.revision = Math.max(Date.now(), this.revision + 1);
