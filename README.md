@@ -24,6 +24,12 @@ Build once before the performance. Keep the computer's local production server r
 
 For hosting elsewhere, serve `dist/` and rewrite unknown application paths to `index.html`. Do not open `index.html` directly with a `file:` URL. The Python service can serve `dist/` locally together with its audio WebSocket. Cross-device control/session synchronization is not included.
 
+### Vercel deployment
+
+Set the Vercel project's **Root Directory** to the folder containing `package.json` and `vercel.json` (the repository root). The included configuration uses the Vite framework preset, runs `npm run build`, serves `dist/`, and rewrites application paths to `index.html` so direct links and page refreshes work with React Router. Redeploy after adding or changing this configuration.
+
+After deployment, open and refresh `/experience`, `/tutorial`, `/control`, and `/follow` directly. Check `/experience?performance=1` retains performance view, assets load successfully, and an unknown path shows the app's not-found page. This deployment serves the frontend; the optional local Python audio service remains a separate setup.
+
 ## Routes
 
 | Route                       | Purpose                                                           |
