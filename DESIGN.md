@@ -178,3 +178,10 @@ Resources are bounded: 240 history samples per instrument at 30Hz (eight seconds
 - Don’t use color alone to identify instruments.
 - Don’t introduce rapid full-screen flashes or motion that bypasses Reduced Motion.
 - Don’t imply live transcription, cross-device synchronization or an invented original logo.
+
+
+## Mixed-input Live extension
+
+Instrument identities and instrument focus scenes describe Demo, tutorial and companion surfaces. Live uses the same palette, luminous strokes, flowing patterns and allium forms for measured mix features: low currents, mid flowing lines, high filaments and transient blooms. It does not label the combined mix as detected instruments. Layer strength, sensitivity and noise threshold are operator controls; mixed ensemble and Calm Mode are Live scenes.
+
+The venue profile is 4416×896 (69:14), proportionally contained on other display shapes and shared by the operator preview. Calibration overlays edges, circles and centerlines without changing caption behavior. Standby leaves a faint static field; silence or missing input never triggers synthetic motion. Existing typography, opaque DOM captions, reduced-motion constraints and rendering fallbacks remain authoritative.

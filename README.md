@@ -1,6 +1,6 @@
 # The Allium
 
-A living visual score for an inclusive music and art event at Glitz Inclusive, Jakarta. React + TypeScript + Vite, using bounded PixiJS WebGL choreography, an animated Canvas 2D fallback, and semantic HTML captions. Supports browser-only **Demo**, input-only Ui24R **Live** audio through a local Python/WebSocket service, and graceful **Standby**. No automatic transcription. See [Live audio setup](docs/audio-setup.md) for macOS/Windows installation, USB channel configuration, projection, and hardware checks.
+A living visual score for an inclusive music and art event at Glitz Inclusive, Jakarta. React + TypeScript + Vite, using bounded PixiJS WebGL choreography, an animated Canvas 2D fallback, and semantic HTML captions. Supports browser-only **Demo**, input-only mixed USB **Live** audio through a local Python/WebSocket service, and graceful **Standby**. No automatic transcription. See [Live audio setup](docs/audio-setup.md) for macOS/Windows installation, mono/stereo channel configuration, LED calibration, and hardware checks.
 
 **Venue operators:** use the portable Start/Stop release package and [Panduan Operator](docs/release/Panduan-Operator.html). Node.js and Python are only needed for developer setup below. Windows native packaging remains pending.
 
@@ -41,25 +41,32 @@ After deployment, open and refresh `/experience`, `/tutorial`, `/control`, and `
 | `/control`                  | Operator desk, channels, captions, scenes and visual controls     |
 | `/follow`                   | Independent mobile demo with device-local preferences             |
 
+## Microphone development test
+
+Run `npm run audio` and `npm run dev` in separate terminals. At `http://localhost:5173/control`, explicitly select **MacBook Pro Microphone → Mono → Input 1 → Auto**, Apply, then Start Live. Allow microphone access for the host running Python. Raw RMS/peak meters and capture diagnostics remain visible independently of the visualization gate. Test speech, separated claps and music through an external speaker; never treat synthetic fixtures as physical-microphone evidence.
+
+See [exact microphone test steps](docs/audio-setup.md#local-development-with-the-macbook-pro-microphone). Optional `node scripts/microphone-check.mjs --seconds 10 --label speech` reports derived statistics from the Vite WebSocket without recording audio.
+
 ## Operator quick start
 
 1. Open `/control`. Select **Open display** to open the audience output in another tab.
 2. Place the display tab on the LED output. Use browser fullscreen for a display opened directly in performance view, or **Performance view** from rehearsal to request fullscreen.
 3. Select **Play demo**. Change musical section to explore Quiet, Chorus, Guitar Solo, Vocal Section and Drum Breakdown.
 4. Use scene buttons to direct attention independently of the musical arrangement. Calm Mode lowers density and movement; Reduced Motion additionally removes travel and animated expansion.
-5. Saxophone is visible throughout Demo, including ensemble previews. Switching to Live mutes saxophone by default; switching back to Demo enables it. Manual mute/unmute choices remain effective until the next source-mode change. Mute hides a channel's visuals. Solo shows the selected subset; multiple solos coexist, and mute takes precedence. Instrument meters represent the selected source, independent of visualization mute; the audio desk also exposes raw USB meters.
+5. For Live, select the mixed USB device, mono channel or stereo pair and sample rate in Audio source; Apply and confirm the input meters. Choose Start Live, then adjust Low currents, Mid flowing lines, High filaments and Transient blooms. Demo retains instrument mute/solo and all six instrument voices. Select the Venue LED display profile for 4416 × 896 and use Display calibration before presenting.
 6. At the caption desk, choose content type, enter a speaker and text, and send. Manual cues are limited to 180 characters to protect readable display space, including Unicode text. Send longer passages as consecutive cues. Manual cues remain until cleared or replaced. **Clear** leaves the caption area ready; **Restore demo cues** resumes the timed sample text. The captions switch hides the caption content without clearing the cue.
 7. Press Escape to leave performance view. A keyboard-focusable exit action is also available in that view.
 
-Only one operator tab owns controls. Additional operator tabs are read-only until the first closes or misses heartbeats for about four seconds. Playback remains independent of operator heartbeat and continues when the operator tab is backgrounded. Modern browsers synchronize tabs using BroadcastChannel; browsers without that API retain local controls and display a clear limitation. Reloading every concert tab starts a new paused Demo session; confirmed audio mappings persist in the local service configuration. A late-joining tab restores the active session from peers.
+Only one operator tab owns controls. Additional operator tabs are read-only until the first closes or misses heartbeats for about four seconds. Playback remains independent of operator heartbeat and continues when the operator tab is backgrounded. Modern browsers synchronize tabs using BroadcastChannel; browsers without that API retain local controls and display a clear limitation. Reloading every concert tab starts a new paused Demo session; confirmed mixed-input settings persist in the local service configuration. A late-joining tab restores the active session from peers.
 
 ## Musical architecture
 
 - `src/engine/types.ts` defines normalized events, instrument vocabulary, scene state, captions and validation.
 - `music.ts` provides deterministic 96 BPM musical patterns and sample captions. Kick, snare and hi-hat have separate articulations. Section arrangements have distinct density and instrument emphasis.
 - `source.ts` defines `MusicSource`, the standalone synthetic `DemoSource`, and the legacy bounded `EventSource`. `audio.ts` adds validated WebSocket packets and a `ConcertSource` per renderer, with independent event consumption and bounded timestamped feature history. Local demo surfaces keep their original source.
-- `audio_service/` provides 48 kHz, input-only 32-channel capture, power-domain grouped analysis, optional monophonic pitch estimates, spectral-flux onset detection, persisted mapping, and a synthetic PCM fixture. WebSocket delivery is 30 Hz; React meters are throttled separately from the renderer.
+- `audio_service/` provides input-only mono/stereo mix capture at a negotiated sample rate, including selected channels on multichannel interfaces. Power-domain stereo analysis measures RMS/peak, frequency energy, spectral changes, transients and dynamics; settings persist and the synthetic PCM fixture remains explicit. WebSocket delivery is 30 Hz; React meters are throttled separately from the renderer.
 - `session.ts` retains the versioned BrowserTransport, state revisions, snapshots and peer heartbeats, with explicit Demo/Live/Standby mode. Live time advances independently of Demo transport. Same-origin/profile operator and display tabs receive audio directly from the local service; session control remains browser-local.
+- `mixed.ts` generates separate Live current, flowing-line, filament and allium-bloom geometry from measured mix features, without instrument or pitch inference.
 - `renderer.ts` owns one requestAnimationFrame loop, viewport sizing, adaptive detail, and backend lifecycle. `webgl.ts` renders pooled PixiJS meshes and batched lights; `backends.ts` renders the same geometry with Canvas 2D. WebGL failure or context loss switches to a fresh Canvas without resetting the session or captions. If both backends fail, the static score and readable captions remain. React does not update on every frame.
 - Caption content remains DOM text, independent of the visual canvas. The operator preview and audience display use the same state and rendering system.
 
@@ -87,10 +94,10 @@ Browser tests use installed Google Chrome (`channel: 'chrome'`). Install Chrome 
 
 Automated accessibility checks do not establish complete WCAG conformance. Before an actual event, validate instrument recognition with Deaf and hard-of-hearing audience members, check caption size at audience viewing distance, and rehearse on the actual LED controller/browser/hardware. Inspect quiet and intense scenes, reduced motion, grayscale, connection recovery and safe visual intensity in that environment.
 
-See [audio verification results](docs/audio-verification.md) for automated checks, synthetic projection measurements, and remaining physical Ui24R tests.
+See [audio verification results](docs/audio-verification.md) for automated checks, synthetic projection measurements, and remaining physical USB audio and LED tests.
 
 ## Operator release candidate
 
 Portable native packaging is in [release/README.md](release/README.md). Operators use the bundled Start/Stop launchers instead of installing development runtimes. [Panduan Operator](docs/release/Panduan-Operator.html) contains Bahasa Indonesia setup, troubleshooting, acceptance and rollback guidance. The dashboard can export/restore settings and export diagnostics.
 
-The macOS ARM64 package is built locally; Windows x64 build tooling is supplied, but its native artifact and validation remain pending. Neither package status nor synthetic software tests establish physical Ui24R compatibility. Runtime settings/logs are stored separately from release folders.
+The macOS ARM64 package is built locally; Windows x64 build tooling is supplied, but its native artifact and validation remain pending. Existing native archives must be rebuilt for these source changes. Neither package status nor synthetic software tests establish physical venue-device compatibility. Runtime settings/logs are stored separately from release folders.

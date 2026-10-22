@@ -15,6 +15,7 @@ import {
   colors,
   descriptions,
   instruments,
+  liveLayers,
   MAX_CAPTION_LENGTH,
   visibleChannel,
   type Instrument,
@@ -40,6 +41,62 @@ import {
 } from "./components/Controls";
 const instrumentStyle = (i: Instrument) =>
   ({ "--instrument": colors[i] }) as CSSProperties;
+const layerLabels = {
+  currents: "Low currents",
+  lines: "Mid flowing lines",
+  filaments: "High filaments",
+  blooms: "Transient blooms",
+};
+function Calibration({ compact = false }: { compact?: boolean }) {
+  const [size, setSize] = useState("");
+  useEffect(() => {
+    const update = () =>
+      setSize(`${window.innerWidth} × ${window.innerHeight}`);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  return (
+    <div
+      className={`calibration ${compact ? "compact" : ""}`}
+      role="img"
+      aria-label="Display calibration: border, centerlines and undistorted circles"
+    >
+      <svg width="100%" height="100%" aria-hidden="true">
+        <rect
+          x="1%"
+          y="2%"
+          width="98%"
+          height="96%"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+        <path d="M0 0" />
+        <line x1="50%" x2="50%" y1="2%" y2="98%" stroke="currentColor" />
+        <line x1="1%" x2="99%" y1="50%" y2="50%" stroke="currentColor" />
+        {[15, 50, 85].map((x) => (
+          <circle
+            key={x}
+            cx={`${x}%`}
+            cy="50%"
+            r="6%"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+          />
+        ))}
+      </svg>
+      <span className="calibration-tl">TOP LEFT</span>
+      <span className="calibration-tr">TOP RIGHT</span>
+      <span className="calibration-bl">BOTTOM LEFT</span>
+      <span className="calibration-br">BOTTOM RIGHT</span>
+      <strong>
+        Target 4416 × 896 · 69:14{!compact && ` · Viewport ${size}`}
+      </strong>
+    </div>
+  );
+}
 function Identity({ compact = false }: { compact?: boolean }) {
   return (
     <Link
@@ -242,7 +299,9 @@ function Experience() {
     }
   };
   return (
-    <div className={`experience ${performance ? "performance" : ""}`}>
+    <div
+      className={`experience ${performance ? "performance" : ""} ${state.displayProfile === "venue" ? "venue-display" : ""}`}
+    >
       {!performance && <Header />}
       <main id="main" className="experience-main">
         <div className="stage">
@@ -256,11 +315,19 @@ function Experience() {
                 connection.available,
                 connection.packet?.status === "fixture",
               ).toUpperCase()}{" "}
-              <span>· {state.scene}</span>
+              <span>
+                ·{" "}
+                {state.mode === "demo"
+                  ? state.scene
+                  : state.scene === "Calm Mode"
+                    ? "Calm Mode"
+                    : "Mixed audio"}
+              </span>
             </span>
           </div>
           <Score session={concert} />
           <Captions session={concert} />
+          {state.calibration && <Calibration />}
         </div>
         {!performance && (
           <div className="rehearsal">
@@ -270,7 +337,7 @@ function Experience() {
                 <p>
                   {state.mode === "demo"
                     ? "A synthetic score. No microphone or live audio is connected."
-                    : "Audio follows the input assignments in the operator desk."}
+                    : "Audio follows the mixed input selected in the operator desk."}
                 </p>
               </div>
               <button className="button" onClick={enter}>
@@ -296,7 +363,7 @@ function Experience() {
                 </Link>
               </div>
             </div>
-            <Legend />
+            {state.mode === "demo" && <Legend />}
             <p className="connection-note">
               {status.supported
                 ? status.operators
@@ -597,24 +664,8 @@ function Control() {
   const time = useTime(concert, 100);
   const connection = useAudio();
   const demoLevels = continuous(time, state.section, state.sectionStart);
-  const levels =
-    state.mode === "demo"
-      ? demoLevels
-      : Object.fromEntries(
-          instruments.map((i) => [
-            i,
-            {
-              intensity:
-                state.mode === "live" && connection.available
-                  ? (connection.packet?.instruments[i].intensity ?? 0)
-                  : 0,
-            },
-          ]),
-        );
-  const active =
-    state.mode === "demo"
-      ? state.playing
-      : state.mode === "live" && connection.available;
+  const levels = demoLevels;
+  const active = state.mode === "demo" && state.playing;
   useEffect(() => {
     concert.setRole("operator");
     return () => concert.setRole("viewer");
@@ -651,7 +702,13 @@ function Control() {
           </div>
           <div>
             <span>SCENE</span>
-            <strong>{state.scene}</strong>
+            <strong>
+              {state.mode === "demo"
+                ? state.scene
+                : state.scene === "Calm Mode"
+                  ? "Calm Mode"
+                  : "Mixed audio"}
+            </strong>
           </div>
           <div>
             <span>CAPTIONS</span>
@@ -683,90 +740,134 @@ function Control() {
         <div className="control-layout">
           <div className="control-left">
             <AudioDesk />
-            <section className="channel-desk">
-              <div className="panel-heading">
-                <h2>Instrument channels</h2>
-                <span>
-                  {state.mode === "demo"
-                    ? "SYNTHETIC INPUT"
-                    : connection.packet?.status === "fixture"
-                      ? "SYNTHETIC SOUNDCHECK"
-                      : "LIVE INPUT"}
-                </span>
-              </div>
-              <div className="channel-column-labels" aria-hidden="true">
-                <span>CHANNEL</span>
-                <span>INPUT LEVEL</span>
-                <span>STATE</span>
-                <span>VISUAL</span>
-              </div>
-              {instruments.map((i) => (
-                <div className="channel-row" key={i} style={instrumentStyle(i)}>
-                  <div className="channel-name">
-                    <InstrumentGlyph instrument={i} />
-                    <strong>{i}</strong>
+            {state.mode === "demo" ? (
+              <section className="channel-desk">
+                <div className="panel-heading">
+                  <h2>Instrument channels</h2>
+                  <span>
+                    {state.mode === "demo"
+                      ? "SYNTHETIC INPUT"
+                      : connection.packet?.status === "fixture"
+                        ? "SYNTHETIC SOUNDCHECK"
+                        : "LIVE INPUT"}
+                  </span>
+                </div>
+                <div className="channel-column-labels" aria-hidden="true">
+                  <span>CHANNEL</span>
+                  <span>INPUT LEVEL</span>
+                  <span>STATE</span>
+                  <span>VISUAL</span>
+                </div>
+                {instruments.map((i) => (
+                  <div
+                    className="channel-row"
+                    key={i}
+                    style={instrumentStyle(i)}
+                  >
+                    <div className="channel-name">
+                      <InstrumentGlyph instrument={i} />
+                      <strong>{i}</strong>
+                    </div>
+                    <div className="level-cell">
+                      <meter
+                        min="0"
+                        max="1"
+                        value={active ? levels[i].intensity : 0}
+                        aria-label={`${i} ${state.mode === "demo" ? "synthetic" : "live"} input level`}
+                      />
+                      <span>
+                        {active ? Math.round(levels[i].intensity * 100) : 0}%
+                      </span>
+                    </div>
+                    <span className="channel-state">
+                      {active && levels[i].intensity > 0.1
+                        ? "Active"
+                        : "Inactive"}
+                    </span>
+                    <div className="channel-actions">
+                      <button
+                        aria-label={`Mute ${i} visualization`}
+                        aria-pressed={state.channels[i].mute}
+                        disabled={status.locked}
+                        onClick={() =>
+                          concert.update({
+                            channels: {
+                              ...state.channels,
+                              [i]: {
+                                ...state.channels[i],
+                                mute: !state.channels[i].mute,
+                              },
+                            },
+                          })
+                        }
+                      >
+                        Mute
+                      </button>
+                      <button
+                        aria-label={`Solo ${i} visualization`}
+                        aria-pressed={state.channels[i].solo}
+                        disabled={status.locked}
+                        onClick={() =>
+                          concert.update({
+                            channels: {
+                              ...state.channels,
+                              [i]: {
+                                ...state.channels[i],
+                                solo: !state.channels[i].solo,
+                              },
+                            },
+                          })
+                        }
+                      >
+                        Solo
+                      </button>
+                    </div>
                   </div>
-                  <div className="level-cell">
+                ))}
+                <p className="panel-note">
+                  Mute and solo affect visuals only. Multiple solos can play
+                  together.
+                </p>
+              </section>
+            ) : (
+              <section className="live-layer-desk">
+                <div className="panel-heading">
+                  <h2>Live visual layers</h2>
+                  <span>MEASURED MIX</span>
+                </div>
+                {liveLayers.map((layer, index) => (
+                  <div className="live-layer" key={layer}>
+                    <Slider
+                      label={layerLabels[layer]}
+                      value={state.layers[layer]}
+                      disabled={status.locked}
+                      onChange={(value) =>
+                        concert.update({
+                          layers: { ...state.layers, [layer]: value },
+                        })
+                      }
+                    />
                     <meter
                       min="0"
                       max="1"
-                      value={active ? levels[i].intensity : 0}
-                      aria-label={`${i} ${state.mode === "demo" ? "synthetic" : "live"} input level`}
+                      value={
+                        state.mode === "live" && connection.available
+                          ? index < 3
+                            ? (connection.packet?.mix.bands[index] ?? 0)
+                            : (connection.packet?.mix.flux ?? 0)
+                          : 0
+                      }
+                      aria-label={`${layerLabels[layer]} audio activity`}
                     />
-                    <span>
-                      {active ? Math.round(levels[i].intensity * 100) : 0}%
-                    </span>
                   </div>
-                  <span className="channel-state">
-                    {active && levels[i].intensity > 0.1
-                      ? "Active"
-                      : "Inactive"}
-                  </span>
-                  <div className="channel-actions">
-                    <button
-                      aria-label={`Mute ${i} visualization`}
-                      aria-pressed={state.channels[i].mute}
-                      disabled={status.locked}
-                      onClick={() =>
-                        concert.update({
-                          channels: {
-                            ...state.channels,
-                            [i]: {
-                              ...state.channels[i],
-                              mute: !state.channels[i].mute,
-                            },
-                          },
-                        })
-                      }
-                    >
-                      Mute
-                    </button>
-                    <button
-                      aria-label={`Solo ${i} visualization`}
-                      aria-pressed={state.channels[i].solo}
-                      disabled={status.locked}
-                      onClick={() =>
-                        concert.update({
-                          channels: {
-                            ...state.channels,
-                            [i]: {
-                              ...state.channels[i],
-                              solo: !state.channels[i].solo,
-                            },
-                          },
-                        })
-                      }
-                    >
-                      Solo
-                    </button>
-                  </div>
-                </div>
-              ))}
-              <p className="panel-note">
-                Mute and solo affect visuals only. Multiple solos can play
-                together.
-              </p>
-            </section>
+                ))}
+                <p className="panel-note">
+                  Zero hides a layer. These layers describe frequency energy and
+                  transients in the combined mix; they do not identify
+                  instruments.
+                </p>
+              </section>
+            )}
             <section className="scene-desk">
               <h2>Scene direction</h2>
               <ScenePicker session={concert} />
@@ -776,17 +877,43 @@ function Control() {
           <aside className="control-right">
             <section className="preview-desk">
               <h2>Display preview</h2>
-              <div className="operator-preview">
+              <div
+                className={`operator-preview ${state.displayProfile === "venue" ? "venue-preview" : ""}`}
+              >
                 <Score session={concert} profile="preview" />
                 <Captions session={concert} compact />
+                {state.calibration && <Calibration compact />}
               </div>
               <p className="panel-note">
-                {instruments.filter((i) => visibleChannel(state, i)).length}{" "}
-                visible channels · {state.section}
+                {state.mode === "demo"
+                  ? `${instruments.filter((i) => visibleChannel(state, i)).length} visible channels · ${state.section}`
+                  : `${liveLayers.filter((k) => state.layers[k] > 0).length} visual layers · mixed input`}
               </p>
             </section>
             <section className="visual-settings">
               <h2>Visual settings</h2>
+              <label className="display-profile">
+                Display profile
+                <select
+                  aria-label="Display profile"
+                  value={state.displayProfile}
+                  disabled={status.locked}
+                  onChange={(e) =>
+                    concert.update({
+                      displayProfile: e.target.value as "responsive" | "venue",
+                    })
+                  }
+                >
+                  <option value="responsive">Responsive · fill display</option>
+                  <option value="venue">Venue LED · 4416 × 896</option>
+                </select>
+              </label>
+              <Toggle
+                label="Display calibration"
+                checked={state.calibration}
+                disabled={status.locked}
+                onChange={(calibration) => concert.update({ calibration })}
+              />
               <Slider
                 label="Overall intensity"
                 value={state.intensity}
@@ -818,7 +945,7 @@ function Control() {
                 <h2>Demo transport</h2>
                 <DemoControls session={concert} />
                 <p className="panel-note">
-                  Simulated music. Use Live for mapped audio inputs.
+                  Simulated music. Use Live for the venue’s combined mix.
                 </p>
               </section>
             )}

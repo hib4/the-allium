@@ -46,7 +46,18 @@ export interface ChannelState {
   mute: boolean;
   solo: boolean;
 }
+export const liveLayers = ["currents", "lines", "filaments", "blooms"] as const;
+export type LiveLayer = (typeof liveLayers)[number];
+export const defaultLayers = (): Record<LiveLayer, number> => ({
+  currents: 1,
+  lines: 1,
+  filaments: 0.65,
+  blooms: 0.8,
+});
 export interface SessionState {
+  layers: Record<LiveLayer, number>;
+  displayProfile: "responsive" | "venue";
+  calibration: boolean;
   mode: "demo" | "live" | "standby";
   playing: boolean;
   anchor: number;

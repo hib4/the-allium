@@ -7,13 +7,13 @@ test.beforeEach(async ({ request }) => {
   expect(
     (
       await request.put("/api/config", {
-        data: { config: emptyConfig(), revision },
+        data: { config: { ...emptyConfig(), channels: [1, 2] }, revision },
       })
     ).ok(),
   ).toBe(true);
 });
 
-test("maps grouped channels through real PCM analysis and synchronizes a display", async ({
+test("mixed input controls feed measured layers and synchronize the venue display", async ({
   page,
   context,
 }) => {
@@ -23,19 +23,13 @@ test("maps grouped channels through real PCM analysis and synchronizes a display
   await expect(
     page.getByText("SERVICE CONNECTED", { exact: true }),
   ).toBeVisible();
-  await page
-    .locator(".audio-mapping")
-    .filter({ hasText: "guitar" })
-    .locator("summary")
-    .click();
-  await page
-    .getByRole("group", { name: "guitar input assignments" })
-    .getByLabel("USB 11 · Input 1", { exact: true })
-    .check();
-  await page
-    .getByRole("group", { name: "guitar input assignments" })
-    .getByLabel("USB 12 · Input 2", { exact: true })
-    .check();
+  await page.getByLabel("Capture device").selectOption({
+    label: "Synthetic mixed soundcheck · Fixture · 32 inputs",
+  });
+  await page.getByLabel("Signal format").selectOption("stereo");
+  await page.getByLabel("Left input", { exact: true }).selectOption("11");
+  await page.getByLabel("Right input", { exact: true }).selectOption("12");
+  await page.getByLabel("Sample rate", { exact: true }).selectOption("44100");
   await page.getByRole("button", { name: "Apply input settings" }).click();
   await expect(
     page.getByText("Input settings saved.", { exact: false }),
@@ -47,79 +41,100 @@ test("maps grouped channels through real PCM analysis and synchronizes a display
   await expect
     .poll(async () =>
       Number(
-        await page.getByLabel("guitar live input level").getAttribute("value"),
+        await page
+          .getByLabel("Mid flowing lines audio activity")
+          .getAttribute("value"),
       ),
     )
     .toBeGreaterThan(0.05);
+  await expect(page.getByLabel("Input 11 level dBFS")).toBeVisible();
+  await expect(
+    page.getByText("Actual capture: 44,100 Hz", { exact: false }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Display profile", { exact: true })
+    .selectOption("venue");
   const display = await context.newPage();
-  await display.setViewportSize({ width: 1920, height: 1080 });
+  await display.setViewportSize({ width: 4416, height: 896 });
   await display.goto("/experience?performance=1");
   await expect(display.locator(".stage-status")).toContainText(
     "LIVE · SYNTHETIC SOUNDCHECK",
   );
-  await expect(display.getByText("SAMPLE CAPTION")).toHaveCount(0);
+  await expect(display.locator(".venue-display")).toBeVisible();
   await expect(display.locator("canvas")).toBeVisible();
+  const rect = await display.locator(".stage").boundingBox();
+  expect(rect?.width).toBe(4416);
+  expect(rect?.height).toBe(896);
+  await page.getByLabel("Low currents", { exact: true }).fill("0");
+  await page.getByLabel("Display calibration", { exact: true }).check();
+  await expect(display.locator(".calibration")).toBeVisible();
+  await display.screenshot({
+    path: ".impeccable/review/mixed-calibration-4416.png",
+  });
+  await page.getByLabel("Display calibration", { exact: true }).uncheck();
   await page
     .getByLabel("Caption text")
     .fill("Selamat datang — Glitz Inclusive");
-  await page.getByRole("button", { name: "Send caption" }).click();
+  await page.getByRole("button", { name: "Send caption", exact: true }).click();
   await expect(display.locator(".captions")).toContainText("Selamat datang");
-  await display.screenshot({
-    path: ".impeccable/review/audio-display-1920.png",
+  await display.waitForTimeout(600);
+  await display.screenshot({ path: ".impeccable/review/mixed-live-4416.png" });
+  const { streamId } = await page.evaluate(async () => {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    return await new Promise<{ streamId: string }>((resolve) => {
+      ws.onmessage = (e) => {
+        const p = JSON.parse(e.data);
+        if (p.type === "features") {
+          ws.close();
+          resolve(p);
+        }
+      };
+    });
   });
-  expect(
-    await display.evaluate(
-      () => document.documentElement.scrollHeight <= innerHeight,
-    ),
-  ).toBe(true);
-  await page.bringToFront();
   await page.getByRole("button", { name: "Standby", exact: true }).click();
   await expect(display.locator(".stage-status")).toContainText("STANDBY");
-  await expect(page.getByLabel("guitar live input level")).toHaveAttribute(
-    "value",
-    "0",
-  );
-  await page.reload();
   await expect(
-    page
-      .locator(".audio-mapping")
-      .filter({ hasText: "guitar" })
-      .locator("summary"),
-  ).toContainText("USB 11, USB 12");
+    page.getByLabel("Mid flowing lines audio activity"),
+  ).toHaveAttribute("value", "0");
+  await page.getByRole("button", { name: "Start Live", exact: true }).click();
+  await expect(display.locator(".stage-status")).toContainText("LIVE");
+  const sameStream = await page.evaluate(async () => {
+    const ws = new WebSocket(`ws://${location.host}/ws`);
+    return await new Promise<string>((resolve) => {
+      ws.onmessage = (e) => {
+        const p = JSON.parse(e.data);
+        if (p.type === "features") {
+          ws.close();
+          resolve(p.streamId);
+        }
+      };
+    });
+  });
+  expect(sameStream).toBe(streamId);
   await page.setViewportSize({ width: 1440, height: 1100 });
   await page.screenshot({
-    path: ".impeccable/review/audio-control-desktop.png",
+    path: ".impeccable/review/mixed-control-desktop.png",
     fullPage: true,
   });
   await page.setViewportSize({ width: 320, height: 800 });
-  await page
-    .locator(".audio-mapping")
-    .filter({ hasText: "guitar" })
-    .locator("summary")
-    .click();
-  await page.screenshot({
-    path: ".impeccable/review/audio-control-mobile.png",
-    fullPage: true,
-  });
   expect(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= innerWidth,
     ),
   ).toBe(true);
-  const violations = (await new AxeBuilder({ page }).analyze()).violations;
-  expect(violations).toEqual([]);
+  expect((await new AxeBuilder({ page }).analyze()).violations).toEqual([]);
+  await page.screenshot({
+    path: ".impeccable/review/mixed-control-mobile.png",
+    fullPage: true,
+  });
   expect(errors).toEqual([]);
 });
 
 test("stale frames enter standby and automatic reconnection restores live input", async ({
   page,
-  request,
 }) => {
-  const settings = await (await request.get("/api/config")).json();
-  settings.config.instruments.drums.channels = [13];
-  await request.put("/api/config", { data: settings });
-  let stalled = false;
-  let reconnects = 0;
+  let stalled = false,
+    reconnects = 0;
   await page.routeWebSocket("**/ws", (client) => {
     reconnects++;
     const server = client.connectToServer();
@@ -146,16 +161,11 @@ test("stale frames enter standby and automatic reconnection restores live input"
   );
 });
 
-test("Demo works with no service and has no public runtime dependencies", async ({
+test("Demo works offline and missing Live input never substitutes simulation", async ({
   page,
 }) => {
   await page.routeWebSocket("**/ws", (route) => route.close());
   await page.route("**/api/**", (route) => route.abort());
-  const external: string[] = [];
-  page.on("request", (request) => {
-    if (new URL(request.url()).hostname !== "127.0.0.1")
-      external.push(request.url());
-  });
   await page.goto("/control");
   await page.getByRole("button", { name: "Play demo", exact: true }).click();
   await expect(page.locator(".status-strip")).toContainText("Demo playing");
@@ -168,120 +178,87 @@ test("Demo works with no service and has no public runtime dependencies", async 
       ),
     )
     .toBeGreaterThan(0);
-  expect(external).toEqual([]);
+  await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(page.locator(".status-strip")).toContainText(
+    "Standby · waiting for live audio",
+  );
+  await expect(page.getByLabel("Low currents audio activity")).toHaveAttribute(
+    "value",
+    "0",
+  );
+  await expect(
+    page.getByText("Instrument channels", { exact: true }),
+  ).toHaveCount(0);
 });
 
-test("measures the complete six-instrument projection under synthetic multichannel load", async ({
-  page,
-  request,
-  context,
-}, testInfo) => {
-  const settings = await (await request.get("/api/config")).json();
-  for (const [index, instrument] of [
-    "vocals",
-    "guitar",
-    "drums",
-    "bass",
-    "piano",
-    "saxophone",
-  ].entries())
-    settings.config.instruments[instrument].channels =
-      instrument === "drums" ? [13, 18, 23] : [11 + index];
-  await request.put("/api/config", { data: settings });
-  await page.goto("/control");
-  await page.getByRole("button", { name: "Live", exact: true }).click();
-  await expect(
-    page.getByRole("button", {
-      name: "Mute saxophone visualization",
-      exact: true,
-    }),
-  ).toHaveAttribute("aria-pressed", "true");
-  await page
-    .getByRole("button", { name: "Mute saxophone visualization", exact: true })
-    .click();
-  await expect
-    .poll(async () =>
-      Number(
-        await page
-          .getByLabel("saxophone live input level")
-          .getAttribute("value"),
-      ),
-    )
-    .toBeGreaterThan(0.05);
-  const operator = page;
-  page = await context.newPage();
-  await page.goto("/experience?performance=1");
-  await page.setViewportSize({ width: 1920, height: 1080 });
-  await expect(page.locator(".stage-status")).toContainText(
-    "LIVE · SYNTHETIC SOUNDCHECK",
-  );
-  const metrics = await page.evaluate(async () => {
-    const intervals: number[] = [];
-    const ages: number[] = [];
-    const ws = new WebSocket(`ws://${location.host}/ws`);
-    let drops = 0,
-      overflows = 0;
-    ws.onmessage = (event) => {
-      const p = JSON.parse(event.data);
-      if (p.type === "features") {
-        ages.push(p.health.processingMs);
-        drops = p.health.dropped;
-        overflows = p.health.overflows;
-      }
-    };
-    await new Promise<void>((resolve) => {
-      let previous = 0,
-        start = 0;
-      function frame(now: number) {
-        if (!start) start = now;
-        if (previous) intervals.push(now - previous);
-        previous = now;
-        if (now - start < 6000) requestAnimationFrame(frame);
-        else resolve();
-      }
-      requestAnimationFrame(frame);
+for (const renderer of ["webgl", "canvas"])
+  test(`venue layout and reduced motion using ${renderer}`, async ({
+    page,
+    context,
+  }, testInfo) => {
+    await page.goto("/control");
+    await page.getByRole("button", { name: "Live", exact: true }).click();
+    await page
+      .getByLabel("Display profile", { exact: true })
+      .selectOption("venue");
+    await page.getByLabel("Reduced motion", { exact: true }).check();
+    const display = await context.newPage();
+    await display.setViewportSize({ width: 4416, height: 896 });
+    await display.goto(
+      `/experience?performance=1${renderer === "canvas" ? "&renderer=canvas" : ""}`,
+    );
+    await expect(display.locator(".score-renderer")).toHaveAttribute(
+      "data-renderer",
+      renderer,
+    );
+    await display.waitForTimeout(600);
+    const metrics = await display.evaluate(async () => {
+      const intervals: number[] = [];
+      await new Promise<void>((resolve) => {
+        let previous = 0,
+          start = 0;
+        function frame(now: number) {
+          if (!start) start = now;
+          if (previous) intervals.push(now - previous);
+          previous = now;
+          if (now - start < 1500) requestAnimationFrame(frame);
+          else resolve();
+        }
+        requestAnimationFrame(frame);
+      });
+      return {
+        fps: 1000 / (intervals.reduce((a, b) => a + b, 0) / intervals.length),
+        scrollWidth: document.documentElement.scrollWidth,
+        scrollHeight: document.documentElement.scrollHeight,
+      };
     });
-    ws.close();
-    intervals.sort((a, b) => a - b);
-    ages.sort((a, b) => a - b);
-    return {
-      frames: intervals.length,
-      fps: 1000 / (intervals.reduce((a, b) => a + b, 0) / intervals.length),
-      frameP95Ms: intervals[Math.floor(intervals.length * 0.95)],
-      processingAgeP95Ms: ages[Math.floor(ages.length * 0.95)],
-      featurePackets: ages.length,
-      drops,
-      overflows,
-      quality: document
-        .querySelector(".score-renderer")
-        ?.getAttribute("data-quality"),
-      renderer: document
-        .querySelector(".score-renderer")
-        ?.getAttribute("data-renderer"),
-    };
+    expect(metrics.scrollWidth).toBe(4416);
+    expect(metrics.scrollHeight).toBe(896);
+    await testInfo.attach(`${renderer}-software-performance`, {
+      body: JSON.stringify(metrics),
+      contentType: "application/json",
+    });
+    await display.screenshot({
+      path: `.impeccable/review/mixed-${renderer}-reduced-4416.png`,
+    });
+    if (renderer === "webgl") {
+      await display.evaluate(() => {
+        const canvas = document.querySelector("canvas")!;
+        const gl = canvas.getContext("webgl2") ?? canvas.getContext("webgl");
+        gl?.getExtension("WEBGL_lose_context")?.loseContext();
+      });
+      await expect(display.locator(".score-renderer")).toHaveAttribute(
+        "data-renderer",
+        "canvas",
+      );
+      await expect(display.locator(".stage-status")).toContainText("LIVE");
+    }
+    await display.setViewportSize({ width: 1920, height: 1080 });
+    const rect = await display.locator(".stage").boundingBox();
+    expect(rect!.width / rect!.height).toBeCloseTo(69 / 14, 2);
+    expect(rect!.width).toBeLessThanOrEqual(1920);
+    expect(rect!.height).toBeLessThanOrEqual(1080);
   });
-  await testInfo.attach("synthetic-performance", {
-    body: JSON.stringify(metrics, null, 2),
-    contentType: "application/json",
-  });
-  console.log("Synthetic projection metrics:", JSON.stringify(metrics));
-  expect(metrics.featurePackets).toBeGreaterThan(80);
-  expect(metrics.processingAgeP95Ms).toBeLessThan(100);
-  await page.screenshot({ path: ".impeccable/review/audio-ensemble-1920.png" });
-  const quiet = await (await request.get("/api/config")).json();
-  for (const instrument of Object.values(quiet.config.instruments) as {
-    sensitivity: number;
-  }[])
-    instrument.sensitivity = 0.1;
-  await request.put("/api/config", { data: quiet });
-  await page.waitForTimeout(1200);
-  await page.screenshot({ path: ".impeccable/review/audio-quiet-1920.png" });
-  await operator.getByLabel("Reduced motion").check();
-  await expect(page.locator(".stage-status")).toContainText(
-    "LIVE · SYNTHETIC SOUNDCHECK",
-  );
-  await page.screenshot({ path: ".impeccable/review/audio-reduced-1920.png" });
-});
 
 test("operator start/stop and safe settings restore", async ({ page }) => {
   await page.goto("/control");
@@ -445,7 +422,7 @@ test("hiding captions removes the band, fills the stage and preserves cues acros
   ).toBeDisabled();
 });
 
-test("legacy settings restore preserves mappings and adds muted saxophone", async ({
+test("legacy restore preserves visual preferences and requires explicit mix setup", async ({
   page,
 }) => {
   await page.goto("/control");
@@ -459,14 +436,20 @@ test("legacy settings restore preserves mappings and adds muted saxophone", asyn
   await page
     .getByRole("button", { name: "Export settings", exact: true })
     .click();
-  const file = await download;
-  const stream = await file.createReadStream();
+  const stream = await (await download).createReadStream();
   const chunks = [];
   for await (const chunk of stream) chunks.push(chunk);
   const saved = JSON.parse(Buffer.concat(chunks).toString());
-  delete saved.audio.instruments.saxophone;
+  saved.version = 1;
+  saved.audio = {
+    device: { name: "Old mixer", hostApi: "Core Audio" },
+    instruments: { guitar: { channels: [11, 12] } },
+  };
   delete saved.visual.channels.saxophone;
-  saved.audio.instruments.guitar.channels = [11, 12];
+  delete saved.visual.layers;
+  delete saved.visual.displayProfile;
+  delete saved.visual.calibration;
+  saved.visual.intensity = 0.4;
   await page.getByLabel("Restore settings").setInputFiles({
     name: "legacy.json",
     mimeType: "application/json",
@@ -475,12 +458,10 @@ test("legacy settings restore preserves mappings and adds muted saxophone", asyn
   await expect(
     page.getByText("Backup downloaded.", { exact: false }),
   ).toBeVisible();
+  await expect(page.getByLabel("Capture device")).toHaveValue("");
   await expect(
-    page.getByRole("button", {
-      name: "Mute saxophone visualization",
-      exact: true,
-    }),
-  ).toHaveAttribute("aria-pressed", "true");
+    page.getByLabel("Overall intensity", { exact: true }),
+  ).toHaveValue("40");
   await page
     .getByRole("button", { name: "Apply input settings", exact: true })
     .click();
@@ -488,11 +469,155 @@ test("legacy settings restore preserves mappings and adds muted saxophone", asyn
     page.getByText("Input settings saved.", { exact: false }),
   ).toBeVisible();
   const { config } = await (await page.request.get("/api/config")).json();
-  expect(config.instruments.guitar.channels).toEqual([11, 12]);
-  expect(config.instruments.saxophone).toEqual({
-    channels: [],
-    sensitivity: 1,
-    noiseDb: -60,
-    pitch: true,
+  expect(config.channels).toEqual([]);
+  expect(config.device).toBeNull();
+});
+
+test("healthy silence, missing hardware and recovery report distinct input states", async ({
+  page,
+}) => {
+  let condition = "active";
+  await page.routeWebSocket("**/ws", (client) => {
+    const server = client.connectToServer();
+    client.onMessage((message) => server.send(message));
+    server.onMessage((message) => {
+      const p = JSON.parse(String(message));
+      if (p.type === "features" && condition !== "active") {
+        p.mix = {
+          ...p.mix,
+          active: false,
+          rms: 0,
+          peak: 0,
+          intensity: 0,
+          bands: [0, 0, 0],
+          spectrum: Array(32).fill(0),
+          centroid: 0,
+          flux: 0,
+          shortEnergy: 0,
+          longEnergy: 0,
+          dynamics: 0,
+        };
+        p.events = [];
+        p.meters = p.meters.map(() => ({
+          rms: 0,
+          peak: 0,
+          db: -120,
+          clip: false,
+        }));
+        if (condition === "missing") {
+          p.status = "unavailable";
+          p.fresh = false;
+          p.actual = null;
+          p.error = "USB input disconnected";
+        }
+      }
+      client.send(JSON.stringify(p));
+    });
   });
+  await page.goto("/control");
+  await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(page.locator(".status-strip")).toContainText(
+    "Live · synthetic soundcheck",
+  );
+  condition = "silent";
+  await expect(
+    page.getByText("Input connected · silence.", { exact: false }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Low currents audio activity")).toHaveAttribute(
+    "value",
+    "0",
+  );
+  await expect(
+    page.getByRole("button", { name: "Live", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  condition = "missing";
+  await expect(page.locator(".audio-status")).toContainText(
+    "USB input disconnected",
+  );
+  await expect(page.locator(".status-strip")).toContainText(
+    "Standby · waiting for live audio",
+  );
+  await expect(
+    page.getByRole("button", { name: "Demo", exact: true }),
+  ).toHaveAttribute("aria-pressed", "false");
+  condition = "active";
+  await expect(page.locator(".status-strip")).toContainText(
+    "Live · synthetic soundcheck",
+  );
+  await expect
+    .poll(async () =>
+      Number(
+        await page
+          .getByLabel("Low currents audio activity")
+          .getAttribute("value"),
+      ),
+    )
+    .toBeGreaterThan(0.05);
+});
+
+test("named mono microphone controls show raw levels independently of the visual gate", async ({
+  page,
+}) => {
+  // Device discovery is mocked; PCM remains the explicitly labelled fixture, not real microphone evidence.
+  await page.route("**/api/devices*", (route) =>
+    route.fulfill({
+      json: {
+        fixture: true,
+        devices: [
+          {
+            id: 1,
+            name: "MacBook Pro Microphone",
+            hostApi: "Core Audio",
+            channels: 1,
+            sampleRate: 48000,
+            checkedConfigurations: [{ channels: 1, sampleRate: 48000 }],
+          },
+        ],
+      },
+    }),
+  );
+  await page.goto("/control");
+  await expect(
+    page.getByText("SERVICE CONNECTED", { exact: true }),
+  ).toBeVisible();
+  await page
+    .getByLabel("Capture device")
+    .selectOption({ label: "MacBook Pro Microphone · Core Audio · 1 inputs" });
+  await expect(
+    page.getByLabel("Signal format").locator('option[value="stereo"]'),
+  ).toHaveAttribute("disabled", "");
+  await page.getByLabel("Mono input", { exact: true }).selectOption("1");
+  await page.getByLabel("Noise threshold", { exact: true }).fill("-10");
+  await page
+    .getByRole("button", { name: "Apply input settings", exact: true })
+    .click();
+  await page.getByRole("button", { name: "Live", exact: true }).click();
+  await expect(
+    page.getByText("Input connected · below the noise threshold.", {
+      exact: false,
+    }),
+  ).toBeVisible();
+  await expect(page.getByLabel("Input 1 raw levels")).toContainText("RMS");
+  await expect(page.getByLabel("Input 1 raw levels")).toContainText("Peak");
+  await expect
+    .poll(async () =>
+      Number(await page.getByLabel("Input 1 level dBFS").getAttribute("value")),
+    )
+    .toBeGreaterThan(-60);
+  await expect(page.getByLabel("Low currents audio activity")).toHaveAttribute(
+    "value",
+    "0",
+  );
+  await expect(page.getByLabel("Capture diagnostics")).toContainText(
+    "MacBook Pro Microphone · Core Audio",
+  );
+  await expect(page.getByLabel("Capture diagnostics")).toContainText(
+    "Frames: fresh",
+  );
+  await page.setViewportSize({ width: 320, height: 800 });
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
 });

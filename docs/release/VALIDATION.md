@@ -1,3 +1,5 @@
+> Historical package evidence. The mixed-input source and LED update are verified separately in [audio-verification.md](../audio-verification.md); these native package/soak results do not validate the new pipeline.
+
 # Caption update — The Allium 1.1.0-rc.2
 
 This release removes the entire caption band when hidden, retains saved cues, moves Show captions into Caption desk, and gives truthful feedback for submissions while hidden. Frontend unit tests: 20 passed; Python service tests: 21 passed; website browser regressions: 10 passed; production integration tests: 7 passed (58 total). Checks include keyboard activation, hide/show in all modes, hidden settings export/restore, operator locking, 320px accessibility and 1920×1080 layout. Production build passed.

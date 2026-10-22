@@ -1,3 +1,4 @@
+import { MixedChoreography } from "./mixed";
 import { Choreography, type RenderOptions } from "./choreography";
 import { CanvasBackend, type RenderBackend } from "./backends";
 import type { MusicSource } from "./source";
@@ -12,6 +13,7 @@ export interface Renderer {
 export class ScoreRenderer implements Renderer {
   private backend?: RenderBackend;
   private model: Choreography;
+  private mixed: MixedChoreography;
   private canvas?: HTMLCanvasElement;
   private observer?: ResizeObserver;
   private raf = 0;
@@ -29,6 +31,7 @@ export class ScoreRenderer implements Renderer {
     source?: MusicSource,
   ) {
     this.model = new Choreography(source);
+    this.mixed = new MixedChoreography(source);
   }
   async initialize() {
     const token = ++this.generation;
@@ -115,7 +118,9 @@ export class ScoreRenderer implements Renderer {
       this.slow = 0;
       this.resize();
     }
-    const frame = this.model.update(
+    const frame = (
+      this.session.state.mode === "demo" ? this.model : this.mixed
+    ).update(
       this.session.time(),
       this.session.state,
       this.width,

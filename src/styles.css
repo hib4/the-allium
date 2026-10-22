@@ -591,7 +591,7 @@ button svg,
   font-size: 11px;
   color: var(--muted);
   letter-spacing: 0.06em;
-  display: flex;
+  display: none;
   align-items: center;
 }
 .stage-status > span:last-child {
@@ -1840,7 +1840,7 @@ textarea {
   height: 100%;
 }
 
-/* Ui24R controls extend the existing operator desk vocabulary. */
+/* Audio controls extend the existing operator desk vocabulary. */
 .audio-desk {
   padding: 26px 0;
   border-bottom: 1px solid var(--border, #353f65);
@@ -1953,7 +1953,10 @@ textarea {
 }
 .usb-meters > div {
   display: grid;
-  grid-template-columns: minmax(125px, 1fr) 1fr 72px 36px;
+  grid-template-columns: minmax(90px, 0.8fr) minmax(60px, 1fr) minmax(
+      110px,
+      auto
+    ) 36px;
   gap: 12px;
   align-items: center;
   min-height: 36px;
@@ -2009,4 +2012,130 @@ textarea {
   width: 100%;
   min-width: 0;
   max-width: 100%;
+}
+
+/* Mixed-input controls share the existing operator typography and flat surfaces. */
+.mix-inputs {
+  border: 0;
+  padding: 18px 0;
+  margin: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+.mix-inputs legend {
+  color: var(--muted);
+  padding: 0;
+}
+.mix-inputs label,
+.display-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.mix-inputs select,
+.display-profile select {
+  min-width: 0;
+  width: 100%;
+}
+.live-layer-desk {
+  padding: 26px 0;
+  border-bottom: 1px solid var(--border);
+}
+.live-layer {
+  padding: 16px 0;
+}
+.live-layer meter {
+  width: 100%;
+  height: 8px;
+  margin-top: 10px;
+}
+.visual-settings .display-profile {
+  margin-bottom: 22px;
+}
+.performance.venue-display .experience-main {
+  align-items: center;
+  justify-content: center;
+}
+.performance.venue-display .stage {
+  flex: none;
+  width: min(100vw, calc(100dvh * 69 / 14));
+  height: min(100dvh, calc(100vw * 14 / 69));
+  aspect-ratio: 69 / 14;
+}
+.operator-preview {
+  position: relative;
+}
+.operator-preview.venue-preview {
+  aspect-ratio: 69 / 14;
+  min-height: 0;
+  overflow: hidden;
+  container-type: inline-size;
+}
+.venue-preview > .score {
+  min-height: 0;
+  height: auto;
+}
+.venue-preview > .captions {
+  min-height: 0;
+  padding: 1cqw 3cqw;
+}
+.venue-preview .captions p {
+  font-size: 2cqw;
+  margin: 0;
+}
+.venue-preview .caption-speaker {
+  font-size: 1.4cqw;
+}
+.venue-preview .caption-rest {
+  font-size: 2cqw;
+}
+.calibration {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  color: var(--yellow);
+  font-size: clamp(10px, 1vw, 26px);
+}
+.calibration svg {
+  position: absolute;
+  inset: 0;
+}
+.calibration span,
+.calibration strong {
+  position: absolute;
+  background: var(--bg);
+  padding: 0.3em 0.6em;
+}
+.calibration-tl {
+  left: 2%;
+  top: 3%;
+}
+.calibration-tr {
+  right: 2%;
+  top: 3%;
+}
+.calibration-bl {
+  left: 2%;
+  bottom: 3%;
+}
+.calibration-br {
+  right: 2%;
+  bottom: 3%;
+}
+.calibration strong {
+  left: 50%;
+  top: 8%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+.calibration.compact {
+  font-size: 5px;
+}
+@media (max-width: 600px) {
+  .mix-inputs {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

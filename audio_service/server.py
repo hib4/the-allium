@@ -21,12 +21,52 @@ from aiohttp import web
 from .analysis import Analyzer, HOP, RATE, default_config, fixture_block, validate_config
 
 
-def audio_devices():
+def audio_devices(probe=True, selected=None):
     import sounddevice as sd
     apis = sd.query_hostapis()
-    return [{'id': n, 'name': d['name'], 'hostApi': apis[d['hostapi']]['name'],
-             'channels': d['max_input_channels'], 'sampleRate': d['default_samplerate']}
-            for n, d in enumerate(sd.query_devices()) if d['max_input_channels'] > 0]
+    devices = []
+    for n, d in enumerate(sd.query_devices()):
+        capacity = min(256, d['max_input_channels'])
+        if capacity < 1:
+            continue
+        rates = sorted({int(d['default_samplerate']), 44100, 48000, 96000})
+        checked = []
+        # Representative capture widths. Exact selected channels are checked on Apply/open.
+        check_selected = probe and selected and selected['name'] == d['name'] and selected['hostApi'] == apis[d['hostapi']]['name']
+        for width in (sorted({1, min(2, capacity), capacity}) if check_selected else []):
+            for rate in rates:
+                try:
+                    sd.check_input_settings(device=n, channels=width, dtype='float32', samplerate=rate)
+                    checked.append({'channels': width, 'sampleRate': rate})
+                except Exception:
+                    pass
+        devices.append({'id': n, 'name': d['name'], 'hostApi': apis[d['hostapi']]['name'],
+                        'channels': capacity, 'sampleRate': int(d['default_samplerate']),
+                        'checkedConfigurations': checked})
+    return devices
+
+
+def resolve_input(config, devices):
+    import sounddevice as sd
+    selected = config['device']
+    matches = [d for d in devices if d['name'] == selected['name'] and d['hostApi'] == selected['hostApi']]
+    if len(matches) != 1:
+        raise ValueError('Selected input unavailable or ambiguous. Reconnect it, refresh devices and select it explicitly.')
+    device = matches[0]
+    width = max(config['channels'])
+    if width > device['channels']:
+        raise ValueError(f"Selected channel {width} exceeds this device’s {device['channels']} inputs.")
+    rates = list(dict.fromkeys([device['sampleRate'], 48000, 44100, 96000])) if config['sampleRate'] == 'auto' else [config['sampleRate']]
+    errors = []
+    widths = sorted({width, device['channels'], *[c['channels'] for c in device.get('checkedConfigurations', []) if c['channels'] >= width]})
+    for rate in rates:
+        for capture_width in widths:
+            try:
+                sd.check_input_settings(device=device['id'], channels=capture_width, dtype='float32', samplerate=rate)
+                return device['id'], capture_width, rate
+            except Exception as error:
+                errors.append(f'{capture_width} ch / {rate} Hz: {error}')
+    raise ValueError('Input format unsupported. ' + '; '.join(errors))
 
 
 class Service:
@@ -36,10 +76,14 @@ class Service:
         self.warning = ''
         if self.path.exists():
             try:
-                self.config = validate_config(json.loads(self.path.read_text()))
+                raw = json.loads(self.path.read_text())
+                self.config = validate_config(raw)
+                if raw.get('version') != 2:
+                    self.warning = 'Legacy settings retained in backup; select the mixed input device and channels.'
+                    self.path.with_suffix('.legacy.json').write_text(json.dumps(raw, indent=2))
             except (ValueError, TypeError, OSError) as error:
                 self.warning = f'Saved configuration unavailable: {error}'
-        if self.warning:
+        if self.warning.startswith('Saved configuration unavailable:'):
             backup = self.path.with_suffix('.bak')
             try:
                 self.config = validate_config(json.loads(backup.read_text()))
@@ -57,59 +101,85 @@ class Service:
         self.dropped = 0
         self.clients = set()
         self.device_task = None
+        self.device_selection = None
+        self.device_formats = {}
         self.blocks = queue.Queue(maxsize=4)
         self.stop = threading.Event()
         self.last_capture = 0.
         self.origin = time.monotonic()
+        self.actual = None
+        self.active_stream = None
+        self.capture_revision = 0
 
     def stamp(self):
         return (time.monotonic() - self.origin) * 1000
 
     def capture(self):
-        if self.fixture:
-            sample = 0
-            deadline = time.monotonic()
-            while not self.stop.is_set():
-                self.enqueue(fixture_block(sample), self.stamp())
-                sample += HOP
-                deadline = max(deadline + HOP / RATE, time.monotonic())
-                self.stop.wait(max(0, deadline - time.monotonic()))
-            return
         while not self.stop.is_set():
-            selected = copy.deepcopy(self.config['device'])
-            if selected is None:
+            config = copy.deepcopy(self.config)
+            revision = self.revision
+            if not config['channels'] or (config['device'] is None and not self.fixture):
                 self.status = 'unconfigured'
-                self.stop.wait(.5)
+                self.actual = None
+                self.stop.wait(.1)
                 continue
             try:
+                self.status = 'connecting'
+                if self.fixture:
+                    rate = RATE if config['sampleRate'] == 'auto' else config['sampleRate']
+                    width = max(config['channels'])
+                else:
+                    device_id, width, rate = resolve_input(config, audio_devices(probe=False))
+                stream_id = str(uuid.uuid4())
+                self.actual = {'sampleRate': rate, 'captureChannels': width, 'channels': config['channels']}
+                self.capture_revision = revision
+                self.stream_id = stream_id
+                self.last_capture = 0
+                self.status, self.error = ('fixture' if self.fixture else 'connecting'), ''
+                if self.fixture:
+                    sample = 0
+                    deadline = time.monotonic()
+                    while not self.stop.is_set() and self.revision == revision:
+                        self.enqueue(fixture_block(sample, len(config['channels']), rate), self.stamp(), stream_id, revision)
+                        sample += HOP
+                        deadline = max(deadline + HOP / rate, time.monotonic())
+                        self.stop.wait(max(0, deadline - time.monotonic()))
+                    continue
                 import sounddevice as sd
-                matches = [d for d in audio_devices() if d['name'] == selected['name'] and d['hostApi'] == selected['hostApi']]
-                if len(matches) != 1:
-                    raise RuntimeError('Selected device unavailable or ambiguous. Refresh devices and choose the Ui24R.')
-                device = matches[0]
-                if device['channels'] < 32:
-                    raise RuntimeError('This device exposes fewer than 32 inputs. Select the multichannel CoreAudio/ASIO device.')
-                sd.check_input_settings(device=device['id'], channels=32, dtype='float32', samplerate=RATE)
-                with sd.InputStream(device=device['id'], channels=32, dtype='float32', samplerate=RATE,
-                                    blocksize=HOP, latency='low') as stream:
-                    self.stream_id = str(uuid.uuid4())
-                    self.status, self.error = 'connected', ''
-                    while not self.stop.is_set() and self.config['device'] == selected:
-                        # Blocking input thread: no DSP or networking on an audio callback.
-                        data, overflow = stream.read(HOP)
-                        self.overflows += int(overflow)
-                        self.enqueue(data, self.stamp())
+                indexes = np.array(config['channels']) - 1
+                def callback(data, frames, timing, status):
+                    # Copy only selected inputs into a bounded queue; DSP/networking run elsewhere.
+                    self.overflows += int(bool(status.input_overflow))
+                    self.enqueue(data[:, indexes].copy(), self.stamp(), stream_id, revision)
+                stream = sd.InputStream(device=device_id, channels=width, dtype='float32', samplerate=rate,
+                                        blocksize=HOP, latency='low', callback=callback)
+                self.active_stream = stream
+                try:
+                    stream.start()
+                    opened = time.monotonic()
+                    while not self.stop.is_set() and self.revision == revision:
+                        if not stream.active or time.monotonic() - max(opened, self.last_capture) > 1:
+                            raise RuntimeError('Capture stalled. Check device availability and microphone permission for the app or terminal running Python. Retrying the selected input.')
+                        if self.last_capture >= opened:
+                            self.status = 'connected'
+                        self.stop.wait(.1)
+                finally:
+                    stream.abort()
+                    stream.close()
+                    self.active_stream = None
             except Exception as error:
                 message = str(error)[:500]
                 if self.status != 'unavailable' or self.error != message:
                     logging.warning('Audio input unavailable: %s', message)
                 self.status, self.error = 'unavailable', message
+                self.actual = None
+                self.last_capture = 0
                 self.stop.wait(2)
 
-    def enqueue(self, data, timestamp):
+    def enqueue(self, data, timestamp, stream_id=None, revision=None):
         self.last_capture = time.monotonic()
         try:
-            self.blocks.put_nowait((data, timestamp, self.stream_id))
+            self.blocks.put_nowait((data, timestamp, stream_id or self.stream_id, self.revision if revision is None else revision))
         except queue.Full:
             try:
                 self.blocks.get_nowait()
@@ -117,7 +187,7 @@ class Service:
                 pass
             self.dropped += 1
             try:
-                self.blocks.put_nowait((data, timestamp, self.stream_id))
+                self.blocks.put_nowait((data, timestamp, stream_id or self.stream_id, self.revision if revision is None else revision))
             except queue.Full:
                 self.dropped += 1
 
@@ -130,37 +200,50 @@ class Service:
     async def run(self):
         thread = threading.Thread(target=self.capture, daemon=True)
         thread.start()
-        analyzer = Analyzer(self.config)
-        revision, stream_id = self.revision, self.stream_id
-        meters, features = analyzer.process(np.zeros((HOP, 32), np.float32), 0)
+        analyzer = None
+        revision, stream_id = 0, ''
         next_send = time.monotonic()
         try:
             while True:
                 block = await asyncio.to_thread(self.next_block)
-                if revision != self.revision or stream_id != self.stream_id:
-                    analyzer = Analyzer(copy.deepcopy(self.config))
+                actual = copy.deepcopy(self.actual) if self.capture_revision == self.revision else None
+                rate = actual['sampleRate'] if actual else RATE
+                if revision != self.revision or stream_id != self.stream_id or analyzer is None:
+                    config = copy.deepcopy(self.config)
+                    analyzer = Analyzer(config, rate)
                     revision, stream_id = self.revision, self.stream_id
-                    meters, features = analyzer.process(np.zeros((HOP, 32), np.float32), self.stamp())
+                    meters, features = analyzer.process(np.zeros((HOP, analyzer.channels), np.float32), self.stamp())
                 timestamp = self.stamp()
+                fresh = (self.status in {'connected', 'fixture'} and actual is not None and
+                         time.monotonic() - self.last_capture < .5)
                 if block:
-                    samples, timestamp, captured_stream = block
-                    if captured_stream == stream_id:
-                        meters, features = analyzer.process(samples, timestamp)
-                fresh = time.monotonic() - self.last_capture < .5
+                    samples, captured_time, captured_stream, captured_revision = block
+                    if captured_stream == stream_id and captured_revision == revision and fresh:
+                        try:
+                            meters, features = analyzer.process(samples, captured_time)
+                            timestamp = captured_time
+                            if self.error.startswith('Invalid captured samples:'):
+                                self.error = ''
+                        except ValueError as error:
+                            self.error = f'Invalid captured samples: {error}'
+                            fresh = False
                 if not fresh:
-                    meters, features = analyzer.process(np.zeros((HOP, 32), np.float32), timestamp)
+                    # A lost input must not retain FFT-window energy or pending transients.
+                    analyzer = Analyzer(config, rate)
+                    meters, features = analyzer.process(np.zeros((HOP, analyzer.channels), np.float32), timestamp)
                 now = time.monotonic()
                 if now < next_send:
                     continue
                 next_send = max(next_send + 1 / 30, now)
                 self.sequence += 1
-                payload = {'v': 1, 'type': 'features', 'streamId': stream_id, 'sequence': self.sequence,
-                           'timestamp': timestamp, 'revision': revision, 'config': self.config,
-                           'status': self.status, 'error': self.error, 'fresh': fresh,
-                           'sampleRate': RATE, 'meters': meters, 'instruments': features,
+                payload = {'v': 2, 'type': 'features', 'streamId': stream_id, 'sequence': self.sequence,
+                           'timestamp': timestamp, 'revision': revision, 'config': config,
+                           'status': self.status, 'error': self.error or self.warning, 'fresh': fresh,
+                           'sampleRate': rate, 'actual': actual, 'meters': meters, 'mix': features,
                            'events': analyzer.drain_events() if fresh else [],
                            'health': {'overflows': self.overflows, 'dropped': self.dropped,
-                                      'processingMs': max(0, self.stamp() - timestamp)}}
+                                      'processingMs': max(0, self.stamp() - timestamp),
+                                      'captureAgeMs': max(0, (time.monotonic() - self.last_capture) * 1000) if self.last_capture else None}}
                 # Slow clients are disconnected instead of accumulating stale frames.
                 for client in list(self.clients):
                     try:
@@ -174,10 +257,16 @@ class Service:
 
     async def devices(self, request):
         try:
-            if self.device_task is None or self.device_task.done():
+            selected = ({'name': request.query['name'], 'hostApi': request.query['hostApi']}
+                        if request is not None and request.query.get('name') and request.query.get('hostApi') else copy.deepcopy(self.config['device']))
+            if not self.fixture and (self.device_task is None or self.device_task.done() or selected != self.device_selection):
+                self.device_selection = selected
                 loop = asyncio.get_running_loop()
                 self.device_task = loop.create_future()
                 pending = self.device_task
+                requested_selection = copy.deepcopy(selected)
+                active_format = (copy.deepcopy(self.actual) if selected == self.config['device'] and
+                                 self.status == 'connected' and self.capture_revision == self.revision else None)
                 pending.add_done_callback(lambda future: future.exception() if not future.cancelled() else None)
                 def complete(result, error):
                     if pending.done():
@@ -188,7 +277,18 @@ class Service:
                         pending.set_result(result)
                 def discover():
                     try:
-                        result, error = audio_devices(), None
+                        # Format probes can interrupt CoreAudio capture. Use proven/cached formats while live.
+                        result = audio_devices(probe=active_format is None, selected=requested_selection)
+                        for device in result:
+                            key = (device['name'], device['hostApi'])
+                            if active_format and requested_selection and key == (requested_selection['name'], requested_selection['hostApi']):
+                                known = {'channels': active_format['captureChannels'], 'sampleRate': active_format['sampleRate']}
+                                device['checkedConfigurations'] = copy.deepcopy(self.device_formats.get(key, []))
+                                if known not in device['checkedConfigurations']:
+                                    device['checkedConfigurations'].append(known)
+                            elif device['checkedConfigurations']:
+                                self.device_formats[key] = copy.deepcopy(device['checkedConfigurations'])
+                        error = None
                     except Exception as failure:
                         result, error = None, failure
                     try:
@@ -196,10 +296,12 @@ class Service:
                     except RuntimeError:
                         pass  # A blocked driver must not retain a shutting-down process.
                 threading.Thread(target=discover, daemon=True).start()
-            devices = await asyncio.wait_for(asyncio.shield(self.device_task), timeout=4)
+            devices = ([{'id': -1, 'name': 'Synthetic mixed soundcheck', 'hostApi': 'Fixture', 'channels': 32,
+                         'sampleRate': RATE, 'checkedConfigurations': [{'channels': n, 'sampleRate': r} for n in [1, 2, 32] for r in [44100, 48000, 96000]]}]
+                       if self.fixture else await asyncio.wait_for(asyncio.shield(self.device_task), timeout=4))
             return web.json_response({'devices': devices, 'fixture': self.fixture})
         except Exception as error:
-            message = str(error) or 'Device discovery timed out. Check the USB driver and restart The Allium if it remains unavailable.'
+            message = str(error) or 'Device discovery timed out. Check the input device/driver and restart The Allium if it remains unavailable.'
             return web.json_response({'devices': [], 'fixture': self.fixture, 'error': message}, status=503)
 
     async def settings(self, request):
@@ -210,6 +312,10 @@ class Service:
             if value.get('revision') != self.revision:
                 return web.json_response({'error': 'Settings changed in another tab. Refresh and retry.'}, status=409)
             config = validate_config(value.get('config'))
+            if config['device'] is not None and not self.fixture:
+                await asyncio.wait_for(asyncio.to_thread(lambda: resolve_input(config, audio_devices(probe=False))), timeout=5)
+            if value.get('revision') != self.revision:
+                return web.json_response({'error': 'Settings changed in another tab. Discard edits and retry.'}, status=409)
             self.path.parent.mkdir(parents=True, exist_ok=True)
             temporary = self.path.with_suffix('.tmp')
             with temporary.open('w', encoding='utf-8') as saved:
@@ -225,10 +331,12 @@ class Service:
             self.config = copy.deepcopy(config)
             self.revision += 1
             return web.json_response({'config': self.config, 'revision': self.revision})
-        except (ValueError, TypeError, AttributeError) as error:
-            return web.json_response({'error': str(error)}, status=400)
+        except (ValueError, TypeError, AttributeError, TimeoutError) as error:
+            return web.json_response({'error': str(error) or 'Input format check timed out. Check the USB device and retry.'}, status=400)
         except OSError as error:
             return web.json_response({'error': f'Could not save settings: {error}'}, status=500)
+        except Exception as error:
+            return web.json_response({'error': f'Input configuration failed: {error}'}, status=503)
 
     async def websocket(self, request):
         ws = web.WebSocketResponse(heartbeat=5, max_msg_size=4096)
@@ -240,7 +348,7 @@ class Service:
                     try:
                         value = json.loads(message.data)
                         if value.get('type') == 'ping':
-                            await ws.send_json({'v': 1, 'type': 'pong', 'clientTime': value.get('clientTime'), 'timestamp': self.stamp()})
+                            await ws.send_json({'v': 2, 'type': 'pong', 'clientTime': value.get('clientTime'), 'timestamp': self.stamp()})
                     except (ValueError, AttributeError):
                         pass
         finally:
@@ -313,7 +421,7 @@ def create_app(service, dist, development=False):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='The Allium input-only Ui24R analyzer')
+    parser = argparse.ArgumentParser(description='The Allium input-only mixed audio analyzer')
     parser.add_argument('--development', action='store_true', help='Allow local Vite development origins')
     parser.add_argument('--port', type=int, default=8765)
     parser.add_argument('--fixture', action='store_true', help='Synthetic PCM soundcheck; no physical capture')

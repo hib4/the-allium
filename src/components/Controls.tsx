@@ -88,14 +88,19 @@ export function ScenePicker({ session }: { session: Session }) {
   const { state, status } = useSession(session);
   return (
     <div className="scene-picker" role="group" aria-label="Visual scene">
-      {scenes.map((scene) => (
+      {(state.mode === "demo"
+        ? scenes
+        : (["Ensemble", "Calm Mode"] as const)
+      ).map((scene) => (
         <button
           key={scene}
           aria-pressed={state.scene === scene}
           disabled={status.locked}
           onClick={() => session.update({ scene: scene as Scene })}
         >
-          {scene}
+          {state.mode !== "demo" && scene === "Ensemble"
+            ? "Mixed ensemble"
+            : scene}
         </button>
       ))}
     </div>

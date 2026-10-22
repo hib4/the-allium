@@ -1,120 +1,101 @@
-import copy
 import numpy as np
 import pytest
-from audio_service.analysis import Analyzer, default_config, validate_config, HOP, RATE
+from audio_service.analysis import Analyzer, default_config, validate_config, HOP
 
 
-def tone(frequency, samples=HOP, start=0, amplitude=.2):
-    return amplitude * np.sin(2*np.pi*frequency*(np.arange(samples)+start)/RATE)
+def configured(channels=(1,), **patch):
+    return {**default_config(), 'channels': list(channels), **patch}
 
 
-def configured(channels=(11,)):
-    config = default_config()
-    config['instruments']['guitar']['channels'] = list(channels)
-    return config
+def tone(frequency, start=0, rate=48000, amplitude=.2):
+    return (amplitude * np.sin(2*np.pi*frequency*(np.arange(HOP)+start)/rate)).astype(np.float32)
 
 
-def test_no_instrument_assignments_by_default():
-    assert all(not g['channels'] for g in default_config()['instruments'].values())
-
-
+@pytest.mark.parametrize('rate', [44100, 48000, 96000])
 @pytest.mark.parametrize('frequency,band', [(100, 0), (1000, 1), (8000, 2)])
-def test_individual_channel_spectrum_and_bands(frequency, band):
-    analyzer = Analyzer(configured())
+def test_bands_use_actual_rate_and_absolute_energy(rate, frequency, band):
+    analyzer = Analyzer(configured(), rate)
     for n in range(8):
-        block = np.zeros((HOP, 32), np.float32)
-        block[:, 10] = tone(frequency, start=n*HOP)
-        meters, features = analyzer.process(block, n*HOP/RATE*1000)
-    assert meters[10]['rms'] > .1
-    assert meters[0]['rms'] == 0
-    assert features['guitar']['bands'][band] > .95
-    assert features['guitar']['intensity'] > .4
-    assert features['vocals']['intensity'] == 0
-    assert len(features['guitar']['spectrum']) == 32
+        meters, features = analyzer.process(tone(frequency, n*HOP, rate)[:, None], n*HOP/rate*1000)
+    assert meters[0]['rms'] > .1
+    assert features['bands'][band] > .4
+    assert all(v < .08 for i, v in enumerate(features['bands']) if i != band)
+    assert features['centroid'] == pytest.approx(frequency, abs=35)
+    assert len(features['spectrum']) == 32
+    assert features['intensity'] > .4
 
 
-def test_grouping_does_not_cancel_opposite_phase():
+def test_opposite_phase_stereo_matches_mono_power():
     a, b = Analyzer(configured()), Analyzer(configured((11, 12)))
-    block = np.zeros((HOP, 32), np.float32)
-    block[:, 10] = tone(440)
-    block[:, 11] = -block[:, 10]
-    _, single = a.process(block, 0)
-    _, group = b.process(block, 0)
-    assert group['guitar']['intensity'] == pytest.approx(single['guitar']['intensity'])
-    assert group['guitar']['bands'] == pytest.approx(single['guitar']['bands'])
+    for n in range(8):
+        mono = tone(440, n*HOP)
+        _, single = a.process(mono[:, None], n*11)
+        meters, stereo = b.process(np.column_stack([mono, -mono]), n*11)
+    assert stereo['intensity'] == pytest.approx(single['intensity'])
+    assert stereo['bands'] == pytest.approx(single['bands'])
+    assert meters[0]['rms'] == pytest.approx(meters[1]['rms'])
 
 
-def test_pitch_onset_silence_and_clipping():
+def test_silence_noise_and_clipping_are_truthful():
     analyzer = Analyzer(configured())
     for n in range(8):
-        block = np.zeros((HOP, 32), np.float32)
-        block[:, 10] = tone(440, start=n*HOP)
-        _, features = analyzer.process(block, n*HOP/RATE*1000)
-    assert features['guitar']['pitch'] == pytest.approx(69, abs=.15)
-    assert features['guitar']['confidence'] > .75
-    assert len(analyzer.drain_events()) == 1
-    block[:] = 0
-    meters, features = analyzer.process(block, 100)
-    assert features['guitar']['intensity'] == 0
-    assert features['guitar']['pitch'] is None
-    assert not analyzer.drain_events()
-    block[:, 10] = 1
-    meters, _ = analyzer.process(block, 200)
-    assert meters[10]['clip']
-    meters, _ = analyzer.process(np.zeros_like(block), 300)
-    assert meters[10]['clip']
-    meters, _ = analyzer.process(np.zeros_like(block), 1300)
-    assert not meters[10]['clip']
-
-
-def test_noise_gate_does_not_invent_notes_or_beats():
-    analyzer = Analyzer(configured())
-    rng = np.random.default_rng(0)
+        analyzer.process(tone(440, n*HOP)[:, None], n*11)
+    assert analyzer.drain_events()
+    meters, f = analyzer.process(np.zeros((HOP, 1), np.float32), 100)
+    assert not f['active'] and f['intensity'] == 0 and f['bands'] == [0, 0, 0]
+    assert analyzer.drain_events() == []
+    rng = np.random.default_rng(2)
     for n in range(100):
-        block = rng.normal(0, 1e-5, (HOP, 32)).astype(np.float32)
-        _, features = analyzer.process(block, n*11)
-        assert features['guitar']['intensity'] == 0
+        _, f = analyzer.process(rng.normal(0, 1e-5, (HOP, 1)).astype(np.float32), 200 + n*11)
+        assert not f['active'] and f['flux'] == 0
     assert analyzer.drain_events() == []
+    meters, _ = analyzer.process(np.ones((HOP, 1), np.float32), 1400)
+    assert meters[0]['clip']
+    meters, _ = analyzer.process(np.zeros((HOP, 1), np.float32), 1500)
+    assert meters[0]['clip']
+    meters, _ = analyzer.process(np.zeros((HOP, 1), np.float32), 2500)
+    assert not meters[0]['clip']
 
 
-@pytest.mark.parametrize('patch', [{'channels': [0]}, {'channels': [33]}, {'channels': [11, 11]}, {'channels': [True]}, {'sensitivity': float('nan')}, {'noiseDb': 0}, {'pitch': 'yes'}])
-def test_config_validation(patch):
-    config = configured()
-    config['instruments']['guitar'].update(patch)
-    with pytest.raises(ValueError):
-        validate_config(config)
+def test_energy_steps_and_transients_are_bounded():
+    analyzer = Analyzer(configured())
+    values = []
+    for n in range(400):
+        amplitude = .03 if n < 100 or n > 300 else .2
+        _, f = analyzer.process(tone(440, n*HOP, amplitude=amplitude)[:, None], n*HOP/48)
+        values.append(f)
+    assert values[200]['shortEnergy'] > values[90]['shortEnergy'] * 3
+    assert values[150]['dynamics'] > 0
+    assert values[350]['dynamics'] < 0
+    events = analyzer.drain_events()
+    assert 1 <= len(events) <= 8
+    assert all(b['timestamp'] - a['timestamp'] >= 160 for a, b in zip(events, events[1:]))
 
 
-def test_shared_channels_are_allowed_and_reset_is_clean():
-    config = configured()
-    config['instruments']['vocals']['channels'] = [11]
-    validate_config(config)
-    analyzer = Analyzer(config)
-    analyzer.process(np.zeros((HOP, 32), np.float32), 0)
-    assert analyzer.drain_events() == []
-
-def test_legacy_config_adds_saxophone_and_preserves_assignments():
-    config = configured((11, 12))
-    del config['instruments']['saxophone']
-    upgraded = validate_config(config)
-    assert upgraded['instruments']['guitar']['channels'] == [11, 12]
-    assert upgraded['instruments']['saxophone'] == default_config()['instruments']['saxophone']
-    assert 'saxophone' not in config['instruments']
-    del config['instruments']['bass']
-    with pytest.raises(ValueError):
-        validate_config(config)
+@pytest.mark.parametrize('patch', [{'channels': [0]}, {'channels': [257]}, {'channels': [1, 1]}, {'channels': [True]}, {'channels': [1, 2, 3]}, {'sensitivity': float('nan')}, {'noiseDb': 0}, {'sampleRate': 0}, {'sampleRate': True}])
+def test_rejects_invalid_config(patch):
+    with pytest.raises(ValueError): validate_config(configured(**patch))
 
 
-def test_saxophone_pitch_and_unmapped_silence():
-    config = default_config()
-    config['instruments']['saxophone']['channels'] = [16]
-    analyzer = Analyzer(config)
-    for n in range(8):
-        block = np.zeros((HOP, 32), np.float32)
-        block[:, 15] = tone(440, start=n*HOP)
-        _, features = analyzer.process(block, n*HOP/RATE*1000)
-    assert features['saxophone']['intensity'] > .4
-    assert features['saxophone']['pitch'] == pytest.approx(69, abs=.15)
-    assert features['saxophone']['confidence'] > .75
-    assert features['guitar']['intensity'] == 0
-    assert any(e['instrument'] == 'saxophone' for e in analyzer.drain_events())
+def test_legacy_config_requires_explicit_mix_selection():
+    legacy = {'device': {'name': 'old', 'hostApi': 'Core Audio'}, 'instruments': {'guitar': {'channels': [11]}}}
+    assert validate_config(legacy) == default_config()
+    assert legacy['instruments']['guitar']['channels'] == [11]
+
+
+@pytest.mark.parametrize('block', [np.zeros((HOP, 32)), np.full((HOP, 1), np.nan), np.full((HOP, 1), np.inf)])
+def test_rejects_bad_pcm(block):
+    with pytest.raises(ValueError): Analyzer(configured()).process(block, 0)
+
+
+@pytest.mark.parametrize('sensitivity', [.1, 1, 10])
+def test_microphone_raw_meters_are_independent_of_gate_and_sensitivity(sensitivity):
+    block = tone(440, amplitude=.01)[:, None]
+    raw = Analyzer(configured(noiseDb=-90, sensitivity=1))
+    gated = Analyzer(configured(noiseDb=-10, sensitivity=sensitivity))
+    meters, active = raw.process(block, 100)
+    gated_meters, silent = gated.process(block, 100)
+    assert meters == gated_meters
+    assert gated_meters[0]['rms'] > 0 and gated_meters[0]['peak'] > 0
+    assert active['active'] and not silent['active'] and silent['intensity'] == 0
+    assert gated.drain_events() == []

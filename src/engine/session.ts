@@ -1,5 +1,7 @@
 import {
   instruments,
+  liveLayers,
+  defaultLayers,
   MAX_CAPTION_LENGTH,
   scenes,
   sections,
@@ -26,6 +28,9 @@ export class BrowserTransport implements Transport {
   }
 }
 const initial = (): SessionState => ({
+  layers: defaultLayers(),
+  displayProfile: "responsive",
+  calibration: false,
   mode: "demo",
   playing: false,
   anchor: Date.now(),
@@ -46,10 +51,26 @@ const initial = (): SessionState => ({
   manual: null,
   captionMode: "demo",
 });
+export function upgradeState(value: unknown): unknown {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+  return {
+    layers: defaultLayers(),
+    displayProfile: "responsive",
+    calibration: false,
+    ...value,
+  };
+}
 export function validState(v: unknown): v is SessionState {
   if (!v || typeof v !== "object") return false;
   const s = v as SessionState;
   return (
+    !!s.layers &&
+    liveLayers.every(
+      (k) =>
+        Number.isFinite(s.layers[k]) && s.layers[k] >= 0 && s.layers[k] <= 1,
+    ) &&
+    ["responsive", "venue"].includes(s.displayProfile) &&
+    typeof s.calibration === "boolean" &&
     ["demo", "live", "standby"].includes(s.mode) &&
     typeof s.playing === "boolean" &&
     Number.isFinite(s.anchor) &&
@@ -196,6 +217,7 @@ export class Session {
         revision: this.revision,
         lastSource: this.lastSource,
       });
+    m.state = upgradeState(m.state);
     if (
       (m.kind === "state" || m.kind === "snapshot") &&
       typeof m.revision === "number" &&
