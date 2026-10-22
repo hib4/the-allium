@@ -18,9 +18,7 @@ if (identity.application !== "The Allium" || identity.fixture !== true)
     "Soak requires the explicit synthetic fixture service. Venue settings must not be changed by this test.",
   );
 const settings = await (await fetch(base + "/api/config")).json();
-for (const [n, i] of ["vocals", "guitar", "drums", "bass", "piano"].entries())
-  settings.config.instruments[i].channels =
-    i === "drums" ? [13, 18, 23] : [11 + n];
+settings.config.channels = [1, 2];
 await fetch(base + "/api/config", {
   method: "PUT",
   headers: { "Content-Type": "application/json" },
@@ -36,13 +34,16 @@ const browser = await chromium.launch({
   ],
 });
 const context = await browser.newContext({
-  viewport: { width: 1920, height: 1080 },
+  viewport: { width: 4416, height: 896 },
 });
 const errors = [];
 context.on("page", (p) => p.on("pageerror", (e) => errors.push(e.message)));
 const operator = await context.newPage();
 await operator.goto(base + "/control");
 await operator.getByRole("button", { name: "Start Live", exact: true }).click();
+await operator
+  .getByLabel("Display profile", { exact: true })
+  .selectOption("venue");
 const display = await context.newPage();
 await display.goto(base + "/experience?performance=1");
 await display.evaluate(() => {

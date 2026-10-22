@@ -22,6 +22,7 @@ export function Score({
   className = "",
   profile = "concert",
 }: { session: Session; className?: string } & RenderOptions) {
+  const { state } = useSession(session);
   const host = useRef<HTMLDivElement>(null);
   const renderer = useRef<ScoreRenderer | null>(null);
   const [failed, setFailed] = useState(false);
@@ -80,9 +81,11 @@ export function Score({
         </div>
       )}
       <span className="sr-only">
-        {instrument
-          ? `${instrument} visual score`
-          : "Visual score: ribbons for vocals, angular paths for guitar, rings for drums, grounded waves for bass, diamonds for piano, looping curves for saxophone."}
+        {state.mode !== "demo"
+          ? "Visual score: low currents, mid flowing lines, high filaments and transient allium blooms responding to mixed audio."
+          : instrument
+            ? `${instrument} visual score`
+            : "Visual score: ribbons for vocals, angular paths for guitar, rings for drums, grounded waves for bass, diamonds for piano, looping curves for saxophone."}
       </span>
     </div>
   );

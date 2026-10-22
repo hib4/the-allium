@@ -20,11 +20,11 @@ Translate musical rhythm, pitch, intensity and expression into an identifiable s
 
 ## Operating Context
 
-1920×1080 projection and panoramic 5:1 LED concert display; same-browser operator and display tabs; independent mobile visual-only demo. Performance must not require public internet.
+Responsive projection and exact 4416×896 (69:14) LED concert display; same-browser operator and display tabs; independent mobile visual-only demo. Performance must not require public internet.
 
 ## Capabilities and Constraints
 
-Five routes, six instrument languages, scene focus modes, standalone Demo, Ui24R Live audio analysis through a local input-only Python/WebSocket service, configurable grouped USB channels, graceful Standby, and manual captions. macOS CoreAudio and Windows ASIO support require physical rehearsal verification. No source separation, recording, automatic transcription, venue relay or cross-device control sync. USB channel references never define venue instrument assignments.
+Five routes, six instrument languages, scene focus modes, standalone Demo, mixed mono/stereo USB Live audio analysis through a local input-only Python/WebSocket service, configurable device/channels/rate and measured visual layers, graceful Standby, and manual captions. macOS CoreAudio and Windows ASIO support require physical rehearsal verification. No source separation, recording, automatic transcription, venue relay or cross-device control sync. USB channel references never define venue instrument assignments.
 
 ## Brand Commitments
 

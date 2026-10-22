@@ -1,16 +1,14 @@
-import { instruments, type Instrument, type MusicEvent } from "./types";
+import { instruments } from "./types";
 import { DemoSource, type MusicSource, type MusicalFrame } from "./source";
 import type { Session } from "./session";
 
-export interface InputSettings {
+export interface AudioConfig {
+  version: 2;
+  device: { name: string; hostApi: string } | null;
   channels: number[];
+  sampleRate: "auto" | number;
   sensitivity: number;
   noiseDb: number;
-  pitch: boolean;
-}
-export interface AudioConfig {
-  device: { name: string; hostApi: string } | null;
-  instruments: Record<Instrument, InputSettings>;
 }
 export interface AudioDevice {
   id: number;
@@ -18,6 +16,7 @@ export interface AudioDevice {
   hostApi: string;
   channels: number;
   sampleRate: number;
+  checkedConfigurations: { channels: number; sampleRate: number }[];
 }
 export interface Meter {
   rms: number;
@@ -25,16 +24,25 @@ export interface Meter {
   db: number;
   clip: boolean;
 }
-export interface Feature {
+export interface MixFeature {
+  rms: number;
+  peak: number;
+  active: boolean;
   intensity: number;
   bands: number[];
   spectrum: number[];
-  pitch: number | null;
-  confidence: number;
   centroid: number;
+  flux: number;
+  shortEnergy: number;
+  longEnergy: number;
+  dynamics: number;
+}
+export interface MixEvent {
+  timestamp: number;
+  intensity: number;
 }
 export interface AudioPacket {
-  v: 1;
+  v: 2;
   type: "features";
   streamId: string;
   sequence: number;
@@ -45,61 +53,72 @@ export interface AudioPacket {
   error: string;
   fresh: boolean;
   sampleRate: number;
+  actual: {
+    sampleRate: number;
+    captureChannels: number;
+    channels: number[];
+  } | null;
   meters: Meter[];
-  instruments: Record<Instrument, Feature>;
-  events: {
-    instrument: Instrument;
-    timestamp: number;
-    intensity: number;
-    articulation: "kick" | "snare" | "hat" | null;
-  }[];
-  health: { overflows: number; dropped: number; processingMs: number };
+  mix: MixFeature;
+  events: MixEvent[];
+  health: {
+    overflows: number;
+    dropped: number;
+    processingMs: number;
+    captureAgeMs?: number | null;
+  };
 }
 export const emptyConfig = (): AudioConfig => ({
+  version: 2,
   device: null,
-  instruments: Object.fromEntries(
-    instruments.map((i) => [
-      i,
-      {
-        channels: [] as number[],
-        sensitivity: 1,
-        noiseDb: -60,
-        pitch: ["guitar", "vocals", "bass", "saxophone"].includes(i),
-      },
-    ]),
-  ) as AudioConfig["instruments"],
+  channels: [],
+  sampleRate: "auto",
+  sensitivity: 1,
+  noiseDb: -60,
 });
+export function migrateConfig(value: unknown): AudioConfig | null {
+  if (validConfig(value)) return structuredClone(value);
+  if (
+    value &&
+    typeof value === "object" &&
+    "instruments" in value &&
+    "device" in value
+  )
+    return emptyConfig();
+  return null;
+}
 const finite = (x: unknown, min: number, max: number): x is number =>
   typeof x === "number" && Number.isFinite(x) && x >= min && x <= max;
 export function validConfig(value: unknown): value is AudioConfig {
   if (!value || typeof value !== "object") return false;
   const c = value as AudioConfig;
   return (
+    c.version === 2 &&
     (c.device === null ||
       (!!c.device &&
         typeof c.device.name === "string" &&
-        typeof c.device.hostApi === "string")) &&
-    !!c.instruments &&
-    instruments.every((i) => {
-      const s = c.instruments[i];
-      return (
-        !!s &&
-        Array.isArray(s.channels) &&
-        s.channels.length <= 32 &&
-        new Set(s.channels).size === s.channels.length &&
-        s.channels.every((n) => Number.isInteger(n) && n >= 1 && n <= 32) &&
-        finite(s.sensitivity, 0.1, 10) &&
-        finite(s.noiseDb, -90, -10) &&
-        typeof s.pitch === "boolean"
-      );
-    })
+        c.device.name.length > 0 &&
+        c.device.name.length <= 200 &&
+        typeof c.device.hostApi === "string" &&
+        c.device.hostApi.length > 0 &&
+        c.device.hostApi.length <= 200)) &&
+    Array.isArray(c.channels) &&
+    c.channels.length <= 2 &&
+    (!c.device || c.channels.length > 0) &&
+    new Set(c.channels).size === c.channels.length &&
+    c.channels.every((n) => Number.isInteger(n) && n >= 1 && n <= 256) &&
+    (c.sampleRate === "auto" ||
+      (finite(c.sampleRate, 8000, 192000) && Number.isInteger(c.sampleRate))) &&
+    finite(c.sensitivity, 0.1, 10) &&
+    finite(c.noiseDb, -90, -10)
   );
 }
 export function validPacket(value: unknown): value is AudioPacket {
   if (!value || typeof value !== "object") return false;
   const p = value as AudioPacket;
+  const f = p.mix;
   return (
-    p.v === 1 &&
+    p.v === 2 &&
     p.type === "features" &&
     typeof p.streamId === "string" &&
     p.streamId.length < 100 &&
@@ -107,13 +126,32 @@ export function validPacket(value: unknown): value is AudioPacket {
     Number.isInteger(p.sequence) &&
     finite(p.timestamp, 0, Number.MAX_SAFE_INTEGER) &&
     finite(p.revision, 1, Number.MAX_SAFE_INTEGER) &&
+    Number.isInteger(p.revision) &&
     validConfig(p.config) &&
-    typeof p.status === "string" &&
+    [
+      "unconfigured",
+      "connecting",
+      "connected",
+      "unavailable",
+      "fixture",
+    ].includes(p.status) &&
     typeof p.error === "string" &&
     typeof p.fresh === "boolean" &&
-    p.sampleRate === 48000 &&
+    finite(p.sampleRate, 8000, 192000) &&
+    (p.actual === null ||
+      (!!p.actual &&
+        p.actual.sampleRate === p.sampleRate &&
+        Number.isInteger(p.actual.captureChannels) &&
+        finite(p.actual.captureChannels, 1, 256) &&
+        Array.isArray(p.actual.channels) &&
+        p.actual.channels.length === p.config.channels.length &&
+        p.actual.channels.every(
+          (n, i) =>
+            n === p.config.channels[i] && n <= p.actual!.captureChannels,
+        ))) &&
+    (!p.fresh || (!!p.actual && ["connected", "fixture"].includes(p.status))) &&
     Array.isArray(p.meters) &&
-    p.meters.length === 32 &&
+    p.meters.length === Math.max(1, p.config.channels.length) &&
     p.meters.every(
       (m) =>
         !!m &&
@@ -122,43 +160,43 @@ export function validPacket(value: unknown): value is AudioPacket {
         finite(m.db, -120, 100) &&
         typeof m.clip === "boolean",
     ) &&
-    !!p.instruments &&
-    instruments.every((i) => {
-      const f = p.instruments[i];
-      return (
-        !!f &&
-        finite(f.intensity, 0, 1) &&
-        Array.isArray(f.bands) &&
-        f.bands.length === 3 &&
-        f.bands.every((n) => finite(n, 0, 1)) &&
-        Array.isArray(f.spectrum) &&
-        f.spectrum.length === 32 &&
-        f.spectrum.every((n) => finite(n, 0, 1)) &&
-        (f.pitch === null || finite(f.pitch, 0, 127)) &&
-        finite(f.confidence, 0, 1) &&
-        finite(f.centroid, 0, 24000)
-      );
-    }) &&
+    !!f &&
+    finite(f.rms, 0, 100) &&
+    finite(f.peak, 0, 100) &&
+    typeof f.active === "boolean" &&
+    finite(f.intensity, 0, 1) &&
+    Array.isArray(f.bands) &&
+    f.bands.length === 3 &&
+    f.bands.every((n) => finite(n, 0, 1)) &&
+    Array.isArray(f.spectrum) &&
+    f.spectrum.length === 32 &&
+    f.spectrum.every((n) => finite(n, 0, 1)) &&
+    finite(f.centroid, 0, p.sampleRate / 2) &&
+    finite(f.flux, 0, 1) &&
+    finite(f.shortEnergy, 0, 1) &&
+    finite(f.longEnergy, 0, 1) &&
+    finite(f.dynamics, -1, 1) &&
     Array.isArray(p.events) &&
-    p.events.length <= 40 &&
+    p.events.length <= 8 &&
     p.events.every(
       (e) =>
         !!e &&
-        instruments.includes(e.instrument) &&
         finite(e.timestamp, 0, p.timestamp + 100) &&
-        finite(e.intensity, 0, 1) &&
-        [null, "kick", "snare", "hat"].includes(e.articulation),
+        finite(e.intensity, 0, 1),
     ) &&
     !!p.health &&
-    finite(p.health.overflows, 0, Number.MAX_SAFE_INTEGER) &&
-    finite(p.health.dropped, 0, Number.MAX_SAFE_INTEGER) &&
-    finite(p.health.processingMs, 0, Number.MAX_SAFE_INTEGER)
+    (p.health.captureAgeMs === undefined ||
+      p.health.captureAgeMs === null ||
+      finite(p.health.captureAgeMs, 0, Number.MAX_SAFE_INTEGER)) &&
+    [p.health.overflows, p.health.dropped, p.health.processingMs].every((n) =>
+      finite(n, 0, Number.MAX_SAFE_INTEGER),
+    )
   );
 }
 export interface TimedPacket {
   time: number;
   packet: AudioPacket;
-  events: MusicEvent[];
+  events: MixEvent[];
 }
 export class AudioConnection {
   private listeners = new Set<() => void>();
@@ -239,13 +277,22 @@ export class AudioConnection {
       try {
         const value = JSON.parse(event.data);
         if (
-          value?.v === 1 &&
+          value?.v === 2 &&
           value.type === "pong" &&
           finite(value.clientTime, Date.now() - 5000, Date.now()) &&
           finite(value.timestamp, 0, Number.MAX_SAFE_INTEGER)
         ) {
           this.offset = (Date.now() + value.clientTime) / 2 - value.timestamp;
         } else if (validPacket(value)) this.accept(value, Date.now());
+        else if (value?.type === "features") {
+          this.history.length = 0;
+          this.publish(
+            true,
+            false,
+            null,
+            "Incompatible audio frames. Restart the service and reload both tabs from the same Allium version.",
+          );
+        }
       } catch {
         /* Malformed data cannot affect the score. */
       }
@@ -271,6 +318,7 @@ export class AudioConnection {
   accept(packet: AudioPacket, received: number) {
     if (packet.streamId !== this.stream) {
       this.stream = packet.streamId;
+      this.offset = null;
       this.sequence = -1;
       this.history.length = 0;
     }
@@ -296,15 +344,12 @@ export class AudioConnection {
     this.history.push({
       time: sampleTime,
       packet,
-      events: packet.events.map((e) => ({
-        instrument: e.instrument,
-        timestamp: sampleTime - Math.max(0, packet.timestamp - e.timestamp),
-        intensity: e.intensity,
-        onset: true,
-        pitch: packet.instruments[e.instrument].pitch ?? undefined,
-        confidence: packet.instruments[e.instrument].confidence,
-        articulation: e.articulation ?? undefined,
-      })),
+      events: packet.fresh
+        ? packet.events.map((e) => ({
+            timestamp: sampleTime - Math.max(0, packet.timestamp - e.timestamp),
+            intensity: e.intensity,
+          }))
+        : [],
     });
     if (this.history.length > 250)
       this.history.splice(0, this.history.length - 250);
@@ -322,19 +367,11 @@ export class AudioConnection {
 }
 export const audio = new AudioConnection();
 
-/** Every renderer has its own cursor; frame lookup never drains shared data. */
+/** Every display has its own mode boundary; shared history is never drained. */
 export class ConcertSource implements MusicSource {
   private demo = new DemoSource();
   private floor = 0;
   private mode = "";
-  private pitches: Record<Instrument, number> = {
-    vocals: 65,
-    guitar: 72,
-    drums: 60,
-    bass: 39,
-    piano: 65,
-    saxophone: 67,
-  };
   constructor(
     private session: Session,
     private connection = audio,
@@ -353,42 +390,8 @@ export class ConcertSource implements MusicSource {
     this.check(time);
     if (this.session.state.mode === "demo")
       return this.demo.frame(time, section, origin);
-    let entry: TimedPacket | undefined;
-    for (let n = this.connection.history.length - 1; n >= 0; n--) {
-      const p = this.connection.history[n];
-      if (p.time <= time && p.time >= this.floor) {
-        entry = p;
-        break;
-      }
-    }
-    const usable =
-      this.session.state.mode === "live" &&
-      entry?.packet.fresh &&
-      time - entry.time <= 500 &&
-      this.connection.getSnapshot().available;
     return Object.fromEntries(
-      instruments.map((i) => {
-        const f = usable && entry ? entry.packet.instruments[i] : undefined;
-        if (f?.pitch !== null && f?.pitch !== undefined && f.confidence >= 0.75)
-          this.pitches[i] = f.pitch;
-        const register =
-          f && f.centroid > 0
-            ? Math.max(36, Math.min(88, 69 + 12 * Math.log2(f.centroid / 440)))
-            : this.pitches[i];
-        return [
-          i,
-          {
-            pitch:
-              f?.pitch != null && f.confidence >= 0.75
-                ? this.pitches[i]
-                : register,
-            intensity: f?.intensity ?? 0,
-            bands: f?.bands,
-            spectrum: f?.spectrum,
-            confidence: f?.confidence,
-          },
-        ];
-      }),
+      instruments.map((i) => [i, { pitch: 60, intensity: 0 }]),
     ) as MusicalFrame;
   }
   events(
@@ -398,19 +401,31 @@ export class ConcertSource implements MusicSource {
     origin: number,
   ) {
     this.check(to);
-    if (this.session.state.mode === "demo")
-      return this.demo.events(from, to, section, origin);
+    return this.session.state.mode === "demo"
+      ? this.demo.events(from, to, section, origin)
+      : [];
+  }
+  mixed(time: number, from: number) {
+    this.check(time);
     if (
       this.session.state.mode !== "live" ||
       !this.connection.getSnapshot().available
     )
-      return [];
-    return this.connection.history
-      .flatMap((p) => p.events)
-      .filter(
-        (e) =>
-          e.timestamp > Math.max(from, this.floor, to - 250) &&
-          e.timestamp <= to,
-      );
+      return null;
+    const entry = [...this.connection.history]
+      .reverse()
+      .find((p) => p.time <= time && p.time >= this.floor);
+    if (!entry?.packet.fresh || time - entry.time > 500) return null;
+    return {
+      feature: entry.packet.mix,
+      events: this.connection.history
+        .filter((p) => p.packet.fresh && p.time >= this.floor)
+        .flatMap((p) => p.events)
+        .filter(
+          (e) =>
+            e.timestamp > Math.max(from, this.floor, time - 250) &&
+            e.timestamp <= time,
+        ),
+    };
   }
 }

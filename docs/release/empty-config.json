@@ -1,45 +1,12 @@
 {
-  "version": 1,
+  "version": 2,
   "audio": {
+    "version": 2,
     "device": null,
-    "instruments": {
-      "vocals": {
-        "channels": [],
-        "sensitivity": 1.0,
-        "noiseDb": -60.0,
-        "pitch": true
-      },
-      "guitar": {
-        "channels": [],
-        "sensitivity": 1.0,
-        "noiseDb": -60.0,
-        "pitch": true
-      },
-      "drums": {
-        "channels": [],
-        "sensitivity": 1.0,
-        "noiseDb": -60.0,
-        "pitch": false
-      },
-      "bass": {
-        "channels": [],
-        "sensitivity": 1.0,
-        "noiseDb": -60.0,
-        "pitch": true
-      },
-      "piano": {
-        "channels": [],
-        "sensitivity": 1.0,
-        "noiseDb": -60.0,
-        "pitch": false
-      },
-      "saxophone": {
-        "channels": [],
-        "sensitivity": 1,
-        "noiseDb": -60,
-        "pitch": true
-      }
-    }
+    "channels": [],
+    "sampleRate": "auto",
+    "sensitivity": 1,
+    "noiseDb": -60
   },
   "visual": {
     "mode": "standby",
@@ -81,6 +48,14 @@
       }
     },
     "manual": null,
-    "captionMode": "manual"
+    "captionMode": "manual",
+    "layers": {
+      "currents": 1,
+      "lines": 1,
+      "filaments": 0.65,
+      "blooms": 0.8
+    },
+    "displayProfile": "venue",
+    "calibration": false
   }
 }

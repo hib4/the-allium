@@ -17,6 +17,13 @@ export type MusicalFrame = Record<
   }
 >;
 export interface MusicSource {
+  mixed?(
+    time: number,
+    from: number,
+  ): {
+    feature: import("./audio").MixFeature;
+    events: import("./audio").MixEvent[];
+  } | null;
   events(
     from: number,
     to: number,

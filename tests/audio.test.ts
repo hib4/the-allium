@@ -8,13 +8,15 @@ import {
   type AudioPacket,
 } from "../src/engine/audio";
 import { Session, concert } from "../src/engine/session";
-import { instruments } from "../src/engine/types";
+import { defaultLayers } from "../src/engine/types";
+import { MixedChoreography } from "../src/engine/mixed";
+import { migrateConfig } from "../src/engine/audio";
+import { upgradeState, validState } from "../src/engine/session";
 afterAll(() => concert.dispose());
-function packet(timestamp: number, sequence = 1): AudioPacket {
-  const config = emptyConfig();
-  config.instruments.guitar.channels = [11];
+export function packet(timestamp: number, sequence = 1): AudioPacket {
+  const config = { ...emptyConfig(), channels: [11, 12] };
   return {
-    v: 1,
+    v: 2,
     type: "features",
     streamId: "fixture",
     sequence,
@@ -24,69 +26,81 @@ function packet(timestamp: number, sequence = 1): AudioPacket {
     status: "fixture",
     error: "",
     fresh: true,
-    sampleRate: 48000,
-    meters: Array.from({ length: 32 }, () => ({
+    sampleRate: 44100,
+    actual: { sampleRate: 44100, captureChannels: 12, channels: [11, 12] },
+    meters: Array.from({ length: 2 }, () => ({
       rms: 0.1,
       peak: 0.2,
       db: -20,
       clip: false,
     })),
-    instruments: Object.fromEntries(
-      instruments.map((i) => [
-        i,
-        {
-          intensity: i === "guitar" ? 0.7 : 0,
-          bands: [0.1, 0.8, 0.1],
-          spectrum: Array(32).fill(0.1),
-          pitch: i === "guitar" ? 69 : null,
-          confidence: 0.9,
-          centroid: 440,
-        },
-      ]),
-    ) as AudioPacket["instruments"],
-    events: [
-      { instrument: "guitar", timestamp, intensity: 0.7, articulation: null },
-    ],
+    mix: {
+      rms: 0.1,
+      peak: 0.2,
+      active: true,
+      intensity: 0.7,
+      bands: [0.1, 0.6, 0.1],
+      spectrum: Array(32).fill(0.1),
+      centroid: 440,
+      flux: 0.3,
+      shortEnergy: 0.7,
+      longEnergy: 0.3,
+      dynamics: 0.4,
+    },
+    events: [{ timestamp, intensity: 0.7 }],
     health: { overflows: 0, dropped: 0, processingMs: 0 },
   };
 }
-it("rejects invalid frames and assignments before they reach rendering", () => {
+it("validates mixed frames, negotiated rates and selected input meters", () => {
   const p = packet(100);
   expect(validPacket(p)).toBe(true);
+  expect(validPacket({ ...p, v: 1 })).toBe(false);
   expect(validPacket({ ...p, meters: [] })).toBe(false);
   expect(validPacket({ ...p, sequence: NaN })).toBe(false);
-  p.instruments.guitar.spectrum[2] = Infinity;
+  expect(validPacket({ ...p, sampleRate: 48000 })).toBe(false);
+  p.mix.spectrum[2] = Infinity;
   expect(validPacket(p)).toBe(false);
-  const c = emptyConfig();
-  c.instruments.drums.channels = [11, 12, 13];
+  const c = { ...emptyConfig(), channels: [11, 12] };
   expect(validConfig(c)).toBe(true);
-  c.instruments.drums.channels.push(33);
+  c.channels = [11, 11];
+  expect(validConfig(c)).toBe(false);
+  c.channels = [1, 2, 3];
   expect(validConfig(c)).toBe(false);
 });
-it("independent render sources receive the same events and silence replaces old levels", () => {
+it("independent mixed sources share events, reject stale input and resume after standby", () => {
   const session = new Session(false);
   session.update({ mode: "live" });
   const connection = new AudioConnection();
   const a = new ConcertSource(session, connection),
     b = new ConcertSource(session, connection);
-  a.frame(1000, session.state.section);
-  b.frame(1000, session.state.section);
+  a.mixed(1000, 0);
+  b.mixed(1000, 0);
   connection.accept(packet(1010), 1010);
-  expect(a.frame(1020, session.state.section).guitar.intensity).toBe(0.7);
-  expect(a.events(1000, 1020, session.state.section, 0)).toEqual(
-    b.events(1000, 1020, session.state.section, 0),
-  );
-  expect(a.events(1000, 1020, session.state.section, 0)).toHaveLength(1);
-  expect(a.frame(1600, session.state.section).guitar.intensity).toBe(0);
-  const silent = packet(1610, 2);
-  silent.instruments.guitar.intensity = 0;
-  silent.events = [];
-  connection.accept(silent, 1610);
-  expect(a.frame(1620, session.state.section).guitar.intensity).toBe(0);
+  expect(a.mixed(1020, 1000)?.feature.intensity).toBe(0.7);
+  expect(a.mixed(1020, 1000)?.events).toEqual(b.mixed(1020, 1000)?.events);
+  expect(a.mixed(1020, 1000)?.events).toHaveLength(1);
+  expect(a.mixed(1600, 1020)).toBeNull();
   session.update({ mode: "standby" });
-  expect(a.events(1600, 1700, session.state.section, 0)).toEqual([]);
-  expect(a.frame(1700, session.state.section).guitar.intensity).toBe(0);
+  expect(a.mixed(1700, 1600)).toBeNull();
+  connection.accept(packet(1710, 2), 1710);
+  session.update({ mode: "live" });
+  expect(a.mixed(1720, 1700)).toBeNull();
+  connection.accept(packet(1730, 3), 1730);
+  expect(a.mixed(1740, 1720)?.events).toHaveLength(1);
+  expect(a.frame(1740, session.state.section).guitar.intensity).toBe(0);
   session.dispose();
+});
+it("clears history on configuration revision and never emits unavailable events", () => {
+  const c = new AudioConnection();
+  c.accept(packet(100), 100);
+  const next = packet(200, 2);
+  next.revision = 2;
+  next.fresh = false;
+  next.actual = null;
+  c.accept(next, 200);
+  expect(c.history).toHaveLength(1);
+  expect(c.history[0].events).toEqual([]);
+  expect(c.getSnapshot().available).toBe(false);
 });
 it("bounds buffers, ignores duplicate sequences and clears old streams", () => {
   const connection = new AudioConnection();
@@ -108,4 +122,74 @@ it("live clock advances independently of paused demo transport", () => {
   session.update({ mode: "demo" });
   expect(session.time()).toBe(0);
   session.dispose();
+});
+
+it("migrates legacy settings without guessing mix channels", () => {
+  expect(
+    migrateConfig({
+      device: { name: "Old", hostApi: "Core Audio" },
+      instruments: {},
+    }),
+  ).toEqual(emptyConfig());
+  const { layers, calibration, displayProfile, ...legacy } = new Session(false)
+    .state;
+  expect(validState(upgradeState(legacy))).toBe(true);
+});
+it("mixed geometry stays bounded, silent without input, and responds to layer controls", () => {
+  const s = new Session(false);
+  s.update({ mode: "live", layers: defaultLayers(), reduced: true });
+  let active = true;
+  const source = {
+    frame: () => ({}) as never,
+    events: () => [],
+    mixed: (time: number) =>
+      active
+        ? {
+            feature: packet(time).mix,
+            events: [{ timestamp: time, intensity: 0.7 }],
+          }
+        : null,
+  };
+  const model = new MixedChoreography(source);
+  for (let t = 1000; t < 5000; t += 34)
+    model.update(t, s.state, 4416, 680, {}, 1);
+  const frame = model.update(5010, s.state, 4416, 680, {}, 1);
+  expect(frame.energy).toBeGreaterThan(0.5);
+  expect(frame.pathCount).toBeLessThanOrEqual(256);
+  expect(frame.lightCount).toBeLessThanOrEqual(1200);
+  for (const p of frame.paths.slice(0, frame.pathCount)) {
+    expect(p.alpha).toBeGreaterThanOrEqual(0);
+    expect(p.alpha).toBeLessThanOrEqual(1);
+    expect(
+      Array.from(p.points.slice(0, p.count * 2)).every(Number.isFinite),
+    ).toBe(true);
+  }
+  s.update({ layers: { currents: 0, lines: 0, filaments: 0, blooms: 0 } });
+  expect(model.update(5044, s.state, 4416, 680, {}, 1).pathCount).toBe(0);
+  active = false;
+  for (let t = 5100; t < 8100; t += 34)
+    model.update(t, s.state, 4416, 680, {}, 1);
+  expect(model.update(8100, s.state, 4416, 680, {}, 1).energy).toBeLessThan(
+    0.001,
+  );
+  s.dispose();
+});
+
+it("accepts optional capture-age diagnostics and validates mono microphone frames", () => {
+  const p = packet(100);
+  p.config = {
+    ...emptyConfig(),
+    device: { name: "MacBook Pro Microphone", hostApi: "Core Audio" },
+    channels: [1],
+  };
+  p.actual = { sampleRate: p.sampleRate, captureChannels: 1, channels: [1] };
+  p.meters = [p.meters[0]];
+  p.health.captureAgeMs = 3;
+  expect(validPacket(p)).toBe(true);
+  p.health.captureAgeMs = null;
+  expect(validPacket(p)).toBe(true);
+  p.health.captureAgeMs = -1;
+  expect(validPacket(p)).toBe(false);
+  p.health.captureAgeMs = Infinity;
+  expect(validPacket(p)).toBe(false);
 });
