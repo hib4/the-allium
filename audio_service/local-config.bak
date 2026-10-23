@@ -1,0 +1,13 @@
+{
+  "version": 2,
+  "device": {
+    "name": "MacBook Pro Microphone",
+    "hostApi": "Core Audio"
+  },
+  "channels": [
+    1
+  ],
+  "sampleRate": "auto",
+  "sensitivity": 1,
+  "noiseDb": -60
+}

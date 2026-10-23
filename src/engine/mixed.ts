@@ -21,6 +21,15 @@ interface Accent {
   origin: number;
   clock: number;
 }
+interface BloomEvent {
+  slot: number;
+  role: "primary" | "secondary";
+  time: number;
+  strength: number;
+  target: number;
+  releaseTime?: number;
+  releaseValue?: number;
+}
 interface Trace {
   time: number;
   energy: number;
@@ -48,6 +57,11 @@ export class MixedChoreography {
   private brightness = 0;
   private change = 0;
   private dynamics = 0;
+  private bloomOpen = [0, 0, 0];
+  private blooms: BloomEvent[] = [];
+  private bloomRest = [-Infinity, -Infinity, -Infinity];
+  private nextBloom = 0;
+  private growthArmed = false;
   private accents: Accent[] = [];
   private traces: Trace[] = [];
   private tracePool: Trace[] = [];
@@ -65,12 +79,61 @@ export class MixedChoreography {
       history: this.historySize,
       accents: this.accents.length,
       trails: this.traces.length,
+      blooms: [...this.bloomOpen],
+      bloomEvents: this.blooms.map((b) => ({
+        slot: b.slot,
+        role: b.role,
+        time: b.time,
+        expires: b.time + 2800,
+        envelope: this.bloomOpen[b.slot],
+      })),
     };
   }
   private sampled = -1;
   private lastAccent = -Infinity;
   private count = 0;
   constructor(private source?: MusicSource) {}
+
+  private bloomEnvelope(b: BloomEvent, time: number) {
+    const age = Math.max(0, time - b.time);
+    const attack = clamp(age / 350);
+    const release = 1 - clamp((age - 550) / 2250);
+    const value = attack * attack * (3 - 2 * attack) * release * release;
+    return b.releaseTime === undefined
+      ? value
+      : Math.min(
+          value,
+          (b.releaseValue ?? 0) *
+            (1 - clamp((time - b.releaseTime) / 600)) ** 2,
+        );
+  }
+  private activateBloom(time: number, strength: number, regions: number) {
+    const primary = this.blooms.find((b) => b.role === "primary");
+    const role = primary ? "secondary" : "primary";
+    // One musical change can supply both an onset and a growth edge; treat it as one event.
+    const recent = this.blooms.some(
+      (b) => time >= b.time && time - b.time < 250,
+    );
+    if (!recent && !this.blooms.some((b) => b.role === role)) {
+      for (let n = 0; n < regions; n++) {
+        const slot = (this.nextBloom + n) % regions;
+        if (
+          time < this.bloomRest[slot] ||
+          this.blooms.some((b) => b.slot === slot)
+        )
+          continue;
+        this.blooms.push({ slot, role, time, strength, target: strength });
+        this.nextBloom = (slot + 1) % regions;
+        return;
+      }
+    }
+    // Reinforcement never changes the event's start, expiry or role.
+    if (primary && primary.releaseTime === undefined)
+      primary.target = Math.min(
+        1,
+        Math.max(primary.target, strength) + strength * 0.08,
+      );
+  }
 
   update(
     time: number,
@@ -88,6 +151,12 @@ export class MixedChoreography {
     if (reset) {
       this.mode = state.mode;
       this.accents.length = 0;
+      this.growthArmed = false;
+      if (discontinuity || state.mode === "live") {
+        this.bloomOpen.fill(0);
+        this.blooms.length = 0;
+        this.bloomRest.fill(-Infinity);
+      }
       this.tracePool.push(...this.traces);
       this.traces.length = 0;
       this.historySize = this.historyCursor = 0;
@@ -158,6 +227,26 @@ export class MixedChoreography {
       this.tracePool.push(...this.traces);
       this.traces.length = 0;
     }
+    const regions = width / height >= 3 ? 3 : 2;
+    this.blooms = this.blooms.filter((b) => {
+      const done =
+        time >= b.time + 2800 ||
+        (b.releaseTime !== undefined && time >= b.releaseTime + 600) ||
+        b.slot >= regions;
+      if (done)
+        this.bloomRest[b.slot] =
+          Math.min(b.time + 2800, (b.releaseTime ?? Infinity) + 600) + 450;
+      return !done;
+    });
+    if (state.layers.blooms <= 0) this.blooms.length = 0;
+    if (!active) {
+      this.growthArmed = false;
+      for (const b of this.blooms)
+        if (b.releaseTime === undefined) {
+          b.releaseValue = this.bloomEnvelope(b, time);
+          b.releaseTime = time;
+        }
+    }
     if (active && Object.values(state.layers).some((v) => v > 0))
       for (const e of input?.events ?? []) {
         if (
@@ -178,6 +267,8 @@ export class MixedChoreography {
             clock: this.activityClock,
           });
           this.lastAccent = e.timestamp;
+          if (state.layers.blooms > 0 && e.intensity >= 0.45)
+            this.activateBloom(e.timestamp, clamp(e.intensity), regions);
         }
       }
     this.accents = this.accents.filter((a) => time - a.time < 2800).slice(-6);
@@ -236,28 +327,25 @@ export class MixedChoreography {
       l.color = tint(color);
       l.alpha = clamp(alpha);
     };
-    const regions = width / height >= 3 ? 3 : 2;
     const centers = Array.from({ length: regions }, (_, i) => ({
       x: width * (regions === 3 ? [0.18, 0.51, 0.82][i] : [0.27, 0.73][i]),
       y: height * (regions === 3 ? [0.35, 0.59, 0.32][i] : [0.36, 0.62][i]),
     }));
-    const pulse = (slot: number) =>
-      this.accents.reduce((sum, a) => {
-        const age = Math.max(0, time - a.time);
-        return (
-          sum +
-          (a.slot === slot
-            ? a.strength * (1 - Math.exp(-age / 150)) * Math.exp(-age / 800)
-            : 0)
-        );
-      }, 0);
-
-    // All routes read one measured feature history, never independent instrument voices.
-    const routes = [
-      [0.77, 0.64, 0.25, 0.46, 0.77, 0.53, 0.26],
-      [0.35, 0.17, 0.48, 0.71, 0.44, 0.21, 0.5],
-      [0.85, 0.74, 0.84, 0.42, 0.37, 0.72, 0.82],
-    ];
+    // Growth is edge-triggered; steady energy can never hold a flower open.
+    const growth = clamp((this.dynamics - 0.08) * 2.6);
+    if (active) {
+      if (growth < 0.2) this.growthArmed = true;
+      if (this.growthArmed && growth >= 0.45) {
+        if (state.layers.blooms > 0) this.activateBloom(time, growth, regions);
+        this.growthArmed = false;
+      }
+    }
+    this.bloomOpen.fill(0);
+    for (const b of this.blooms) {
+      b.strength += (b.target - b.strength) * (1 - Math.exp(-dt / 180));
+      this.bloomOpen[b.slot] = this.bloomEnvelope(b, time) * b.strength;
+    }
+    const bloomAt = (slot: number) => this.blooms.find((b) => b.slot === slot);
     const points = LIMITS.points;
     const readHistory = (u: number, channel: number) => {
       if (!this.historySize || state.reduced)
@@ -268,12 +356,24 @@ export class MixedChoreography {
             : channel === 4
               ? this.brightness
               : this.change;
-      const lag = Math.min(this.historySize - 1, u * 45);
+      const lag = Math.min(this.historySize - 1, (1 - u) * 60);
       const a = Math.floor(lag),
         b = Math.min(this.historySize - 1, a + 1);
       const at = (n: number) =>
         this.history[((this.historyCursor - 1 - n + 64) % 64) * 6 + channel];
-      return at(a) + (at(b) - at(a)) * (lag - a);
+      // Catmull–Rom interpolation avoids corners between 20 Hz feature samples.
+      const p0 = at(Math.max(0, a - 1)),
+        p1 = at(a),
+        p2 = at(b),
+        p3 = at(Math.min(this.historySize - 1, b + 1)),
+        t = lag - a;
+      return clamp(
+        0.5 *
+          (2 * p1 +
+            (-p0 + p2) * t +
+            (2 * p0 - 5 * p1 + 4 * p2 - p3) * t * t +
+            (-p0 + 3 * p1 - 3 * p2 + p3) * t * t * t),
+      );
     };
     const accentPosition = (a: Accent) =>
       state.reduced
@@ -288,32 +388,33 @@ export class MixedChoreography {
     for (let route = 0; route < 3; route++) {
       const spine = this.spines[route];
       for (let j = 0; j < points; j++) {
-        const u = j / (points - 1),
-          v = u * 6,
-          k = Math.min(5, Math.floor(v)),
-          t = v - k;
+        const u = j / (points - 1);
+        // Related organic treatments share measured mix features. No pitch or source labels.
+        const contour = (v: number) =>
+          (readHistory(v, 0) - 0.35) * -0.2 +
+          (readHistory(v, 4) - 0.2) * -0.24 +
+          (readHistory(v, 2) - readHistory(v, 1)) * 0.13;
         const low = readHistory(u, 1),
-          mid = readHistory(u, 2),
-          change = readHistory(u, 5);
-        const at = (index: number) => {
-          const n = Math.max(0, Math.min(6, index));
-          return (
-            routes[route][n] +
-            Math.sin(this.phase * (0.4 + route * 0.09) + n * 1.9 + route) *
-              (0.018 + low * 0.065 + change * 0.035) *
-              Math.sin((n / 6) * Math.PI)
-          );
-        };
-        const a = at(k - 1),
-          b = at(k),
-          c = at(k + 1),
-          d = at(k + 2);
+          mid = readHistory(u, 2);
+        const foldA = Math.exp(-(((u - 0.24) / 0.16) ** 2));
+        const foldB = Math.exp(-(((u - 0.7) / 0.19) ** 2));
+        const bend = Math.sin(
+          u * TAU * (route === 0 ? 1.8 : 1.25) -
+            this.phase * 0.24 +
+            route * 1.9,
+        );
         const y =
-          0.5 *
-          (2 * b +
-            (-a + c) * t +
-            (2 * a - 5 * b + 4 * c - d) * t * t +
-            (-a + 3 * b - 3 * c + d) * t * t * t);
+          route === 2
+            ? 0.78 + Math.sin(u * TAU * 1.1 + 0.7) * (0.045 + low * 0.04)
+            : 0.49 +
+              (route === 0
+                ? -foldA * (0.16 + low * 0.08) + foldB * 0.15
+                : foldA * 0.16 - foldB * (0.15 + low * 0.065)) +
+              bend * (0.055 + mid * 0.075) +
+              contour(u) * 0.45 +
+              Math.sin(u * TAU * 2.2 + route * 1.6 - this.phase * 0.11) *
+                this.change *
+                0.025;
         const envelope = Math.sin(u * Math.PI);
         let displacement = 0;
         if (!state.reduced)
@@ -341,7 +442,11 @@ export class MixedChoreography {
           (y +
             envelope *
               Math.sin(u * TAU * 3 - this.phase * 0.4 + route) *
-              (0.006 + mid * 0.018) +
+              (route === 2
+                ? 0.003 + low * 0.008
+                : route === 0
+                  ? 0.003 + mid * 0.01
+                  : 0) +
             displacement);
       }
     }
@@ -362,298 +467,130 @@ export class MixedChoreography {
       const a = sample(0, u),
         b = sample(1, u);
       centers[i].x = (a.x + b.x) * 0.5;
-      centers[i].y = (a.y + b.y) * 0.5;
+      centers[i].y = Math.max(
+        height * 0.34,
+        Math.min(
+          height * 0.66,
+          (a.y + b.y) * 0.5 + height * (i === 1 ? 0.12 : -0.12),
+        ),
+      );
     }
-    const palette = [0xc4a5ff, 0x6eb4ff, 0x00b3a7];
+    const bloomShape = (slot: number) => {
+      const event = bloomAt(slot),
+        center = centers[slot];
+      const secondary = event?.role === "secondary";
+      const envelope = this.bloomOpen[slot];
+      const open = state.reduced
+        ? 0.55
+        : clamp(((event?.releaseTime ?? time) - (event?.time ?? time)) / 350);
+      const radius =
+        0.7 *
+        (secondary ? 0.65 : 1) *
+        Math.min(
+          height * (0.055 + this.energy * 0.025 + open * 0.24),
+          width / (regions * 3.2),
+          Math.min(center.x, width - center.x, center.y, height - center.y) /
+            1.16,
+        );
+      return { event, open, radius, envelope, secondary };
+    };
+    const palette = [0xff3ebb, 0x6eb4ff, 0x00b3a7];
     const ribbon = (
       route: number,
-      kind: "outer" | "inner" | "core" | "strand",
+      kind: "outer" | "middle" | "inner" | "halo" | "core" | "strand",
       strand = 0,
       opacity = 1,
     ) => {
-      const gain = state.layers[route === 2 ? "currents" : "lines"];
+      const gain =
+        state.layers[route === 2 ? "currents" : "lines"] *
+        (route === 2 ? 0.45 : 1);
       const level = route === 2 ? this.levels[0] : this.levels[1];
       const readable =
         0.012 +
-        Math.pow(this.energy, 0.35) * 0.95 * (0.8 + Math.sqrt(level) * 0.2);
-      const soft = kind === "outer" || kind === "inner";
-      const width =
+        Math.pow(this.energy, 0.28) * 0.95 * (0.8 + Math.sqrt(level) * 0.2);
+      const soft = kind !== "core" && kind !== "strand";
+      const contourCount =
+        route === 0 ? (q < 0.5 ? 6 : 9) : route === 1 ? (q < 0.5 ? 5 : 6) : 4;
+      const spread =
         height *
-        { outer: 0.12, inner: 0.021, core: 0.0019, strand: 0.001 }[kind] *
-        (0.7 + this.energy * 0.65 + level * 0.3);
+        (route === 2
+          ? 0.045
+          : 0.12 + this.energy * 0.085 + this.levels[1] * 0.025);
+      const width = Math.max(
+        soft ? 0 : kind === "core" ? 1 : 0.75,
+        height *
+          {
+            outer: 0.13,
+            middle: 0.075,
+            inner: 0.035,
+            halo: 0.009,
+            core: 0.005,
+            strand: 0.0024,
+          }[kind] *
+          (0.85 + this.energy * 0.25),
+      );
       const alpha =
         gain *
         strength *
         readable *
         opacity *
-        { outer: 0.44, inner: 0.78, core: 1, strand: 0.6 }[kind];
-      const p = path(
-        points,
-        width,
-        kind === "core" ? (route === 2 ? 0x6eb4ff : 0xe3d1ff) : palette[route],
-        alpha,
-        soft,
-        true,
-      );
+        {
+          outer: 0.22,
+          middle: 0.25,
+          inner: 0.28,
+          halo: 0.32,
+          core: 1,
+          strand: 0.9,
+        }[kind];
+      const p = path(points, width, palette[route], alpha, soft, true);
       if (!p) return;
       const base = this.spines[route];
       for (let j = 0; j < p.count; j++) {
-        const u = j / (p.count - 1),
-          before = Math.max(0, j - 1),
-          after = Math.min(p.count - 1, j + 1);
-        const dx = base[after * 2] - base[before * 2],
-          dy = base[after * 2 + 1] - base[before * 2 + 1],
-          length = Math.max(0.001, Math.hypot(dx, dy));
-        const envelope = Math.sin(u * Math.PI);
-        const historyMid = readHistory(u, 2),
-          high = readHistory(u, 3);
-        const braid =
+        const u = j / (p.count - 1);
+        // Related strands fan and reconverge without collapsing into one luminous stroke.
+        const fan =
+          0.32 +
+          0.68 * (0.5 + 0.5 * Math.sin(u * TAU * 1.35 + route * 1.7)) ** 0.7;
+        const available = Math.max(
+          0,
+          Math.min(
+            base[j * 2 + 1] - height * 0.05,
+            height * 0.95 - base[j * 2 + 1],
+          ) * 1.65,
+        );
+        const band = Math.min(spread * fan, available);
+        const fraction =
           kind === "strand"
-            ? height *
-              envelope *
-              (Math.sin(
-                u * TAU * (2.1 + this.brightness) +
-                  this.phase * 0.65 +
-                  strand * 0.9,
-              ) *
-                (0.008 + historyMid * 0.028) +
-                (strand - 3.5) * 0.0035 * (0.4 + historyMid))
-            : 0;
-        const detail =
+            ? strand / (contourCount - 1) - 0.5
+            : kind === "core" || kind === "halo"
+              ? -0.5
+              : 0;
+        const texture =
           kind === "strand"
-            ? height *
-              high *
-              0.0018 *
-              Math.sin(u * TAU * 19 + strand + this.phase * 0.4) *
-              envelope
+            ? readHistory(u, 3) *
+              height *
+              0.0007 *
+              Math.sin(u * TAU * 12 + this.phase * 0.3)
             : 0;
-        p.points[j * 2] = base[j * 2] - (dy / length) * (braid + detail);
+        p.points[j * 2] = base[j * 2];
         p.points[j * 2 + 1] =
-          base[j * 2 + 1] + (dx / length) * (braid + detail);
+          base[j * 2 + 1] +
+          band * fraction +
+          texture +
+          (kind === "strand"
+            ? Math.sin(u * TAU * 2.6 + strand * 0.4 - this.phase * 0.2) *
+              height *
+              this.levels[1] *
+              0.002 *
+              Math.sin(u * Math.PI)
+            : 0);
+        const edge = clamp(u / 0.065) * clamp((1 - u) / 0.065);
         p.widths![j] = Math.max(
           0.015,
-          envelope ** 0.7 *
-            (0.6 + 0.4 * Math.sin(u * 8 + route + this.phase * 0.25) ** 2),
+          edge * (0.5 + 0.5 * Math.sin(u * 8 + route + strand * 0.2) ** 2),
         );
       }
     };
-    // Render diffusion behind every core, then braid the foreground across the shared field.
-    for (const kind of ["outer", "inner", "core"] as const)
-      for (let route = 0; route < 3; route++) ribbon(route, kind);
-    const detail = (calm ? 0.35 : 1) * q;
-    for (let route = 0; route < 3; route++)
-      for (let n = 0; n < (q > 0.6 ? 8 : 4); n++) {
-        const visibility =
-          n < 4 ? 1 : clamp((this.levels[1] * 4 - (n - 4)) * 1.3);
-        ribbon(route, "strand", n, visibility * detail);
-      }
-    // An accepted onset is one coordinated local pulse, not a global brightness flash.
-    for (const e of this.accents) {
-      const age = Math.max(0, (time - e.time) / 1000),
-        u = accentPosition(e);
-      const envelope =
-        (1 - Math.exp(-age * 10)) * Math.exp(-age * 1.35) * e.strength;
-      const gain = state.layers[e.route === 2 ? "currents" : "lines"];
-      for (let glow = 0; glow < 2; glow++) {
-        const p = path(
-          32,
-          height * (glow ? 0.0028 : 0.026),
-          glow ? 0xe3d1ff : palette[e.route],
-          envelope * gain * strength * (glow ? 0.72 : 0.27),
-          !glow,
-          true,
-        );
-        if (p)
-          for (let j = 0; j < p.count; j++) {
-            const t = j / (p.count - 1),
-              v = u + (t - 0.5) * Math.min(0.12, (height / width) * 0.7),
-              point = sample(e.route, v);
-            p.points[j * 2] = point.x;
-            p.points[j * 2 + 1] = point.y;
-            p.widths![j] = Math.max(0.01, Math.sin(t * Math.PI) ** 1.6);
-          }
-      }
-    }
-    if (state.layers.blooms > 0)
-      for (let i = 0; i < regions; i++)
-        for (let route = 0; route < 2; route++) {
-          const u = regions === 3 ? [0.18, 0.51, 0.82][i] : [0.27, 0.73][i];
-          const root = sample(route, u),
-            center = centers[i];
-          const p = path(
-            32,
-            height * 0.0012,
-            0xc4a5ff,
-            state.layers.blooms * strength * (0.008 + this.energy * 0.22),
-            false,
-            true,
-          );
-          if (p)
-            for (let j = 0; j < p.count; j++) {
-              const t = j / (p.count - 1),
-                bend = Math.sin(t * Math.PI) * height * 0.03;
-              p.points[j * 2] =
-                root.x + (center.x - root.x) * t + bend * (route ? 1 : -1);
-              p.points[j * 2 + 1] = root.y + (center.y - root.y) * t;
-              p.widths![j] = 0.1 + Math.sin(t * Math.PI) * 0.9;
-            }
-        }
-
-    // Open curled ribbons bring a second scale of curvature around the focal regions.
-    // Their expansion follows mids/dynamics; they are not autonomous orbiting decorations.
-    if (state.layers.lines > 0)
-      for (let i = 0; i < regions; i++) {
-        const center = centers[i];
-        const radius = Math.min(
-          height * (0.19 + this.levels[1] * 0.085 + this.dynamics * 0.035),
-          width / (regions * 3),
-        );
-        const alpha =
-          state.layers.lines *
-          strength *
-          (0.006 + Math.sqrt(this.levels[1]) * 0.28);
-        for (let glow = 0; glow < 2; glow++) {
-          const p = path(
-            100,
-            height * (glow ? 0.0018 : 0.018),
-            i === 1 ? 0xffc6e8 : 0xc4a5ff,
-            alpha * (glow ? 1 : 0.28),
-            !glow,
-            true,
-          );
-          if (!p) continue;
-          for (let j = 0; j < p.count; j++) {
-            const t = j / (p.count - 1),
-              angle = -2.7 + t * 5.6 + i * 1.3 + this.phase * 0.04;
-            const r =
-              radius *
-              (0.65 + t * 0.5) *
-              (1 + this.change * 0.07 * Math.sin(t * 9));
-            p.points[j * 2] = center.x + Math.cos(angle) * r;
-            p.points[j * 2 + 1] =
-              center.y +
-              Math.sin(angle) *
-                r *
-                (0.83 + 0.08 * Math.sin(i + this.phase * 0.1));
-            p.widths![j] = Math.max(0.015, Math.sin(t * Math.PI) ** 1.3);
-          }
-        }
-      }
-
-    // Focal flowers keep a recognizable radial crown even without onset events.
-    if (state.layers.blooms > 0)
-      for (let i = 0; i < regions; i++) {
-        const center = centers[i],
-          accent = clamp(pulse(i));
-        const spectral = this.spectrum[4 + i * 8];
-        const radius = Math.min(
-          height *
-            (0.18 +
-              this.energy * 0.075 +
-              this.dynamics * 0.015 +
-              (state.reduced ? 0 : accent) * 0.035),
-          width / (regions * 3.2),
-          Math.min(center.y, height - center.y) / 1.22,
-        );
-        const alpha =
-          state.layers.blooms *
-          strength *
-          (0.018 + Math.pow(this.energy, 0.55) * 0.55);
-        const petals = Math.round(12 + q * 10);
-        const turn = this.phase * 0.045 * (i % 2 ? -1 : 1);
-        for (let n = 0; n < petals; n++) {
-          const direction = (n / petals) * TAU + turn + i * 0.7;
-          const length =
-            radius * (0.72 + hash(n + i * 31) * 0.3 + spectral * 0.12);
-          const p = path(
-            36,
-            Math.max(0.65, height * 0.00125),
-            i === 1 ? 0xffc6e8 : 0xe3d1ff,
-            alpha * (n % 3 === 0 ? 0.85 : 0.48),
-          );
-          if (!p) continue;
-          for (let j = 0; j < p.count; j++) {
-            const t = j / (p.count - 1),
-              r = length * (0.09 + Math.sin(t * Math.PI) * 0.91);
-            const a =
-              direction +
-              Math.sin(t * TAU) *
-                (0.12 +
-                  this.brightness * 0.08 +
-                  (state.reduced ? 0 : accent) * 0.05);
-            p.points[j * 2] = center.x + Math.cos(a) * r;
-            p.points[j * 2 + 1] = center.y + Math.sin(a) * r;
-          }
-          const tx = center.x + Math.cos(direction) * length,
-            ty = center.y + Math.sin(direction) * length;
-          light(tx, ty, height * 0.004, 0xffc6e8, alpha * 0.7);
-          // Small floret crowns distinguish an allium head from a generic radial pulse.
-          if (n % 2 === 0 && q > 0.5) {
-            const crown = path(
-              25,
-              Math.max(0.6, height * 0.001),
-              0xffc6e8,
-              alpha * 0.65,
-            );
-            if (crown)
-              for (let j = 0; j < crown.count; j++) {
-                const a = (j / (crown.count - 1)) * TAU,
-                  r =
-                    height *
-                    (0.009 + this.levels[2] * 0.009) *
-                    (0.72 + 0.28 * Math.cos(a * 5));
-                crown.points[j * 2] = tx + Math.cos(a) * r;
-                crown.points[j * 2 + 1] = ty + Math.sin(a) * r;
-              }
-          }
-        }
-        for (let ring = 0; ring < 2; ring++) {
-          const p = path(
-            48,
-            height * (ring ? 0.001 : 0.028),
-            0xc4a5ff,
-            alpha * (ring ? 0.5 : 0.2),
-            !ring,
-          );
-          if (p)
-            for (let j = 0; j < p.count; j++) {
-              const a = (j / (p.count - 1)) * TAU,
-                r = radius * (ring ? 0.12 : 0.16);
-              p.points[j * 2] = center.x + Math.cos(a) * r;
-              p.points[j * 2 + 1] = center.y + Math.sin(a) * r;
-            }
-        }
-      }
-
-    if (state.layers.blooms > 0)
-      for (const a of this.accents) {
-        const age = Math.max(0, (time - a.time) / 2800),
-          center = sample(a.route, accentPosition(a));
-        const opacity =
-          (1 - Math.exp(-age * 20)) *
-          (1 - age) ** 2 *
-          a.strength *
-          state.layers.blooms *
-          strength;
-        const radius = Math.min(
-          height * (0.035 + (state.reduced ? 0.02 : age * motion * 0.13)),
-          Math.min(center.x, width - center.x, center.y, height - center.y) /
-            1.08,
-        );
-        const p = path(
-          72,
-          Math.max(0.75, height * 0.0015),
-          0xffc6e8,
-          opacity * 0.45,
-        );
-        if (p)
-          for (let j = 0; j < p.count; j++) {
-            const angle = (j / (p.count - 1)) * TAU;
-            const r = radius * (1 + 0.045 * Math.sin(angle * 5));
-            p.points[j * 2] = center.x + Math.cos(angle) * r;
-            p.points[j * 2 + 1] = center.y + Math.sin(angle) * r;
-          }
-      }
     // A small pool of real previous spine geometry supplies fading motion trails.
     if (
       active &&
@@ -712,6 +649,293 @@ export class MixedChoreography {
             }
         }
       }
+    // Soft diffusion surrounds the bodies; sharp strands remain readable above it.
+    for (const kind of ["outer", "middle", "inner", "halo"] as const)
+      for (const route of [2, 0, 1]) ribbon(route, kind);
+    for (let route = 0; route < 3; route++) {
+      const count =
+        route === 0 ? (q < 0.5 ? 6 : 9) : route === 1 ? (q < 0.5 ? 5 : 6) : 4;
+      for (let n = count - 1; n >= 1; n--)
+        ribbon(route, "strand", n, 1 - (n / (count - 1)) * 0.3);
+      ribbon(route, "core");
+    }
+    // An accepted onset is one coordinated local pulse, not a global brightness flash.
+    for (const e of this.accents) {
+      const age = Math.max(0, (time - e.time) / 1000),
+        u = accentPosition(e);
+      const envelope =
+        (1 - Math.exp(-age * 10)) * Math.exp(-age * 1.35) * e.strength;
+      const gain = state.layers[e.route === 2 ? "currents" : "lines"];
+      for (let glow = 0; glow < 2; glow++) {
+        const p = path(
+          32,
+          height * (glow ? 0.0028 : 0.026),
+          glow ? 0xe3d1ff : palette[e.route],
+          envelope * gain * strength * (glow ? 0.72 : 0.27),
+          !glow,
+          true,
+        );
+        if (p)
+          for (let j = 0; j < p.count; j++) {
+            const t = j / (p.count - 1),
+              v = u + (t - 0.5) * Math.min(0.12, (height / width) * 0.7),
+              point = sample(e.route, v);
+            p.points[j * 2] = point.x;
+            p.points[j * 2 + 1] = point.y;
+            p.widths![j] = Math.max(0.01, Math.sin(t * Math.PI) ** 1.6);
+          }
+      }
+    }
+    if (state.layers.blooms > 0)
+      for (let i = 0; i < regions; i++)
+        for (let route = 0; route < 2; route++) {
+          const u = regions === 3 ? [0.18, 0.51, 0.82][i] : [0.27, 0.73][i];
+          const root = sample(route, u),
+            center = centers[i];
+          const p = path(
+            32,
+            height * 0.0012,
+            0xc4a5ff,
+            state.layers.blooms *
+              strength *
+              this.bloomOpen[i] *
+              0.22 *
+              (bloomAt(i)?.role === "secondary" ? 0.5 : 1),
+            false,
+            true,
+          );
+          if (p)
+            for (let j = 0; j < p.count; j++) {
+              const t = j / (p.count - 1),
+                bend = Math.sin(t * Math.PI) * height * 0.03;
+              p.points[j * 2] =
+                root.x + (center.x - root.x) * t + bend * (route ? 1 : -1);
+              p.points[j * 2 + 1] = root.y + (center.y - root.y) * t;
+              p.widths![j] = 0.1 + Math.sin(t * Math.PI) * 0.9;
+            }
+        }
+
+    // Projected spherical allium heads: rear stems, body, then foreground florets.
+    // Three florets share each pooled path; zero-width joins never draw connecting diagonals.
+    if (state.layers.blooms > 0)
+      for (let i = 0; i < regions; i++) {
+        const center = centers[i];
+        const { event, open, radius, envelope, secondary } = bloomShape(i);
+        if (!event || envelope <= 0) continue;
+        const alpha =
+          state.layers.blooms *
+          strength *
+          envelope *
+          (secondary ? 0.5 : 1) *
+          (0.32 + Math.sqrt(this.energy) * 0.5);
+        const turn = this.phase * 0.025 * (i % 2 ? -1 : 1);
+        const unfurl = 0.2 + 0.8 * clamp(open / 0.75);
+        const florets = 108;
+        // Diffuse head atmosphere behind its silhouette, with a softly illuminated heart.
+        for (let shell = 0; shell < 2; shell++) {
+          const halo = path(
+            64,
+            radius * (shell ? 0.2 : 0.32),
+            0xc4a5ff,
+            alpha * (shell ? 0.12 : 0.08),
+            true,
+          );
+          if (halo)
+            for (let j = 0; j < halo.count; j++) {
+              const a = (j / (halo.count - 1)) * TAU;
+              const r = radius * unfurl * (shell ? 0.72 : 0.42);
+              halo.points[j * 2] = center.x + Math.cos(a) * r;
+              halo.points[j * 2 + 1] = center.y + Math.sin(a) * r;
+            }
+        }
+        light(
+          center.x,
+          center.y,
+          Math.max(2, radius * unfurl * 0.12),
+          0xc4a5ff,
+          alpha * 0.26,
+        );
+        for (let depth = 0; depth < 3; depth++) {
+          const color = [0xc4a5ff, 0xc4a5ff, 0xe3d1ff][depth];
+          const bandAlpha = alpha * [0.25, 0.65, 1][depth];
+          // Stable sphere samples, ordered back to front. Quality removes rear detail first.
+          const counts = secondary
+            ? q < 0.5
+              ? [0, 6, 12]
+              : q < 0.75
+                ? [0, 9, 15]
+                : [0, 12, 18]
+            : q < 0.5
+              ? [0, 9, 18]
+              : q < 0.75
+                ? [3, 12, 24]
+                : [6, 18, 30];
+          const perBand = counts[depth];
+          for (let group = 0; group < Math.ceil(perBand / 3); group++) {
+            const count = Math.min(3, perBand - group * 3);
+            const p = path(
+              count * 48,
+              Math.max(0.8, height * (0.0016 + depth * 0.00045)),
+              color,
+              bandAlpha,
+              false,
+              true,
+            );
+            if (!p) continue;
+            for (let item = 0; item < count; item++) {
+              const n =
+                depth * 36 + Math.floor(((group * 3 + item) * 36) / perBand);
+              const z = -1 + (2 * (n + 0.5)) / florets;
+              const shell = Math.sqrt(Math.max(0, 1 - z * z));
+              const angle = n * 2.399963229728653 + turn + i * 0.8;
+              // Outer stems follow inner ones during unfolding; no geometry animation in Reduced Motion.
+              const progress = clamp((open - shell * 0.12) / 0.65);
+              const reveal =
+                0.2 + 0.8 * progress * progress * (3 - 2 * progress);
+              const scale = radius * reveal;
+              const tipX = center.x + Math.cos(angle) * shell * scale;
+              const tipY = center.y + Math.sin(angle) * shell * scale * 0.96;
+              const tipSize = Math.max(
+                0.8,
+                radius * reveal * (0.035 + (z + 1) * 0.017),
+              );
+              const orientation = angle + Math.PI * 0.5;
+              const bend = scale * (0.025 + hash(n + i * 80) * 0.025);
+              const base = item * 48;
+              for (let j = 0; j < 48; j++) {
+                let x = tipX,
+                  y = tipY,
+                  weight = 0;
+                if (j <= 13) {
+                  const t = clamp((j - 1) / 11);
+                  x =
+                    center.x +
+                    (tipX - center.x) * t -
+                    Math.sin(angle) * Math.sin(t * Math.PI) * bend;
+                  y =
+                    center.y +
+                    (tipY - center.y) * t +
+                    Math.cos(angle) * Math.sin(t * Math.PI) * bend;
+                  weight = j > 0 && j < 13 ? 0.18 + t * 0.12 : 0;
+                } else {
+                  const a = clamp((j - 15) / 30) * TAU;
+                  const petal = tipSize * (0.38 + 0.62 * Math.cos(a * 3) ** 2);
+                  const dx = Math.cos(a) * petal,
+                    dy = Math.sin(a) * petal * (0.4 + Math.abs(z) * 0.6);
+                  x += Math.cos(orientation) * dx - Math.sin(orientation) * dy;
+                  y += Math.sin(orientation) * dx + Math.cos(orientation) * dy;
+                  weight =
+                    j >= 15 && j <= 45 ? 0.75 + 0.25 * Math.sin(a * 3) ** 2 : 0;
+                }
+                p.points[(base + j) * 2] = x;
+                p.points[(base + j) * 2 + 1] = y;
+                p.widths![base + j] = weight;
+              }
+              if (depth === 2 && item === 0)
+                light(
+                  tipX,
+                  tipY,
+                  Math.max(0.8, tipSize * 0.7),
+                  0xe3d1ff,
+                  alpha * 0.32 * Math.min(1, this.energy * 30),
+                );
+            }
+          }
+        }
+        const markers = q > 0.6 ? 5 : 3;
+        const markerAlpha =
+          state.layers.blooms *
+          strength *
+          envelope *
+          (secondary ? 0.5 : 1) *
+          0.35;
+        let lastX = center.x,
+          lastY = center.y;
+        for (let n = 0; n < markers; n++) {
+          const a = -Math.PI * 0.5 + (n / markers) * TAU;
+          const x = center.x + Math.cos(a) * radius * 0.5 * unfurl,
+            y = center.y + Math.sin(a) * radius * 0.5 * unfurl;
+          const size = Math.max(
+            1,
+            height *
+              (0.008 + this.energy * 0.008) *
+              0.7 *
+              (secondary ? 0.65 : 1),
+          );
+          const diamond = path(
+            5,
+            Math.max(1, height * 0.002),
+            0xc4a5ff,
+            markerAlpha,
+          );
+          if (diamond)
+            diamond.points.set([
+              x,
+              y - size,
+              x + size,
+              y,
+              x,
+              y + size,
+              x - size,
+              y,
+              x,
+              y - size,
+            ]);
+          const stem = path(
+            2,
+            Math.max(0.7, height * 0.0014),
+            0xc4a5ff,
+            markerAlpha * 0.5,
+          );
+          if (stem)
+            stem.points.set([
+              x,
+              y + size + height * 0.004,
+              x,
+              y + size + height * 0.02,
+            ]);
+          const link = path(
+            2,
+            Math.max(0.6, height * 0.001),
+            0xc4a5ff,
+            markerAlpha * 0.2,
+          );
+          if (link) link.points.set([lastX, lastY, x, y]);
+          light(x, y, height * 0.01, 0xc4a5ff, markerAlpha * 0.6);
+          lastX = x;
+          lastY = y;
+        }
+      }
+
+    if (state.layers.blooms > 0)
+      for (const a of this.accents) {
+        const age = Math.max(0, (time - a.time) / 2800),
+          center = sample(a.route, accentPosition(a));
+        const opacity =
+          (1 - Math.exp(-age * 20)) *
+          (1 - age) ** 2 *
+          a.strength *
+          state.layers.blooms *
+          strength;
+        const radius = Math.min(
+          height * (0.035 + (state.reduced ? 0.02 : age * motion * 0.13)),
+          Math.min(center.x, width - center.x, center.y, height - center.y) /
+            1.08,
+        );
+        const p = path(
+          72,
+          Math.max(0.75, height * 0.0015),
+          0xc4a5ff,
+          opacity * 0.45,
+        );
+        if (p)
+          for (let j = 0; j < p.count; j++) {
+            const angle = (j / (p.count - 1)) * TAU;
+            const r = radius * (1 + 0.045 * Math.sin(angle * 5));
+            p.points[j * 2] = center.x + Math.cos(angle) * r;
+            p.points[j * 2 + 1] = center.y + Math.sin(angle) * r;
+          }
+      }
     const filamentGain = state.layers.filaments * strength;
     const branches = Math.floor(
       (calm ? 6 : 18) *
@@ -721,17 +945,18 @@ export class MixedChoreography {
     );
     if (filamentGain > 0 && this.energy > 0.001)
       for (let n = 0; n < branches; n++) {
-        const attached = n % 2 === 1;
+        const attached = n % 3 !== 0 || !bloomAt(n % regions);
         const center = attached
           ? sample(n % 3, 0.12 + hash(n + 42) * 0.76)
           : centers[n % regions];
-        const angle = hash(n + 90) * TAU + this.phase * 0.035;
-        const radius = attached
-            ? 0
-            : Math.min(
-                height * (0.17 + this.energy * 0.06),
-                width / (regions * 3.8),
-              ),
+        const rootU = 0.12 + hash(n + 42) * 0.76;
+        const before = sample(n % 3, rootU - 0.015),
+          after = sample(n % 3, rootU + 0.015);
+        const angle = attached
+          ? Math.atan2(after.y - before.y, after.x - before.x) +
+            (n % 2 ? -0.35 : 0.35)
+          : hash(n + 90) * TAU + this.phase * 0.035;
+        const radius = attached ? 0 : bloomShape(n % regions).radius,
           reach = Math.min(
             Math.max(
               0,
@@ -757,7 +982,7 @@ export class MixedChoreography {
         if (!p) continue;
         for (let j = 0; j < p.count; j++) {
           const t = j / (p.count - 1),
-            a = angle + Math.sin(t * 3 + this.brightness) * 0.25;
+            a = angle + Math.sin(t * 4 + this.brightness) * 0.45;
           p.points[j * 2] = center.x + Math.cos(a) * (radius + reach * t);
           p.points[j * 2 + 1] = center.y + Math.sin(a) * (radius + reach * t);
         }
@@ -785,7 +1010,7 @@ export class MixedChoreography {
           );
           for (let k = 0; k < particles; k++) {
             const t = (hash(n * 9 + k) + this.phase * 0.055) % 1,
-              a = angle + Math.sin(t * 3 + this.brightness) * 0.25;
+              a = angle + Math.sin(t * 4 + this.brightness) * 0.45;
             light(
               center.x + Math.cos(a) * (radius + reach * t),
               center.y + Math.sin(a) * (radius + reach * t),

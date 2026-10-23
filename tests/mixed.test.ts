@@ -40,6 +40,11 @@ const snap = (f: ScoreFrame) =>
     color: p.color,
     widths: p.variableWidth ? Array.from(p.widths!.slice(0, p.count)) : null,
   }));
+const core = (f: ScoreFrame, color = 0xff3ebb) =>
+  f.paths
+    .slice(0, f.pathCount)
+    .filter((p) => p.count === 160 && !p.soft && p.color === color)
+    .sort((a, b) => b.width - a.width)[0];
 function setup(f: MixFeature | null = feature(), onsets = false) {
   let value = f;
   const source: MusicSource = {
@@ -86,8 +91,8 @@ it("builds richer, larger compositions as measured intensity increases", () => {
     [...frames.map((f) => f.energy)].sort((a, b) => a - b),
   );
   expect(frames[2].pathCount).toBeGreaterThan(frames[0].pathCount);
-  expect(frames[2].paths[0].width).toBeGreaterThan(frames[0].paths[0].width);
-  expect(frames[2].paths[0].alpha).toBeGreaterThan(frames[0].paths[0].alpha);
+  expect(core(frames[2]).width).toBeGreaterThan(core(frames[0]).width);
+  expect(core(frames[2]).alpha).toBeGreaterThan(core(frames[0]).alpha);
 });
 it("maps low/mid/high energy to distinct geometry and spectral changes to detail", () => {
   const render = (f: MixFeature) => {
@@ -105,7 +110,7 @@ it("maps low/mid/high energy to distinct geometry and spectral changes to detail
     ),
   ).not.toEqual(render(feature()));
 });
-it("uses tapered, nonparallel contours and spreads focal light across the panorama", () => {
+it("uses tapered, crossing ribbon contours across the panorama", () => {
   const { model } = setup();
   const f = settle(model);
   const ribbons = f.paths.slice(0, f.pathCount).filter((p) => p.variableWidth);
@@ -116,15 +121,14 @@ it("uses tapered, nonparallel contours and spreads focal light across the panora
   expect(
     Math.max(...ribbons[0].widths!.slice(0, ribbons[0].count)),
   ).toBeGreaterThan(0.5);
-  for (let region = 0; region < 3; region++)
-    expect(
-      f.lights
-        .slice(0, f.lightCount)
-        .some((l) => l.x / 4416 >= region / 3 && l.x / 4416 < (region + 1) / 3),
-    ).toBe(true);
-  // Independent routes cross vertically rather than staying in stacked lanes.
-  const a = ribbons[0],
-    b = ribbons[4];
+  for (const color of [0xff3ebb, 0x6eb4ff]) {
+    const p = core(f, color);
+    expect(p.points[0]).toBeLessThan(0);
+    expect(p.points[(p.count - 1) * 2]).toBeGreaterThan(4416);
+  }
+  // Related treatments of one mix cross vertically instead of remaining in stacked lanes.
+  const a = core(f),
+    b = core(f, 0x6eb4ff);
   const differences = Array.from(
     { length: a.count },
     (_, i) => a.points[i * 2 + 1] - b.points[i * 2 + 1],
@@ -138,7 +142,7 @@ it("localizes onset accents and rejects duplicate or old events", () => {
   const fa = structuredClone(settle(a.model)),
     fb = settle(b.model);
   expect(fa.pathCount).toBeGreaterThan(fb.pathCount);
-  expect(fa.pathCount - fb.pathCount).toBeLessThanOrEqual(18);
+  expect(fa.pathCount - fb.pathCount).toBeLessThanOrEqual(90);
   expect(a.model.metrics.accents).toBeLessThanOrEqual(6);
   const staleSource: MusicSource = {
     events: () => [],
@@ -306,7 +310,7 @@ it("remains deterministic and bounded through a long passage, resize and backgro
     if (p.variableWidth)
       expect(
         Array.from(p.widths!.slice(0, p.count)).every(
-          (v) => Number.isFinite(v) && v > 0,
+          (v) => Number.isFinite(v) && v >= 0,
         ),
       ).toBe(true);
   }
@@ -335,18 +339,17 @@ it("onsets deform one local part of a ribbon without changing global brightness"
   const fa = structuredClone(a.update(3300, s, 4416, 680, {}, 1)),
     fb = b.update(3300, s, 4416, 680, {}, 1);
   expect(fa.energy).toBe(fb.energy);
-  expect(fa.paths[0].alpha).toBe(fb.paths[0].alpha);
+  expect(core(fa).alpha).toBe(core(fb).alpha);
   const changed = Array.from(
-    { length: fa.paths[0].count },
+    { length: core(fa).count },
     (_, i) =>
-      Math.abs(fa.paths[0].points[i * 2 + 1] - fb.paths[0].points[i * 2 + 1]) >
-      0.01,
+      Math.abs(core(fa).points[i * 2 + 1] - core(fb).points[i * 2 + 1]) > 0.01,
   ).filter(Boolean).length;
   expect(changed).toBeGreaterThan(0);
-  expect(changed).toBeLessThan(fa.paths[0].count * 0.4);
-  for (const route of [1, 2])
-    expect(Array.from(fa.paths[route].points)).toEqual(
-      Array.from(fb.paths[route].points),
+  expect(changed).toBeLessThan(core(fa).count * 0.4);
+  for (const color of [0x6eb4ff, 0x00b3a7])
+    expect(Array.from(core(fa, color).points)).toEqual(
+      Array.from(core(fb, color).points),
     );
   for (let t = 3350; t <= 6500; t += 50) a.update(t, s, 4416, 680, {}, 1);
   expect(a.metrics.accents).toBe(0);
@@ -390,4 +393,405 @@ it("reduced-motion onset accents stay in place while their opacity fades", () =>
   expect(a.pathCount).toBe(b.pathCount);
   expect(snap(a).map((p) => p.points)).toEqual(snap(b).map((p) => p.points));
   expect(a.paths.some((p, i) => p.alpha !== b.paths[i].alpha)).toBe(true);
+});
+
+it("uses the tutorial palette and Piano diamond/stem groups without instrument data", () => {
+  const source: MusicSource = {
+    frame: () => {
+      throw new Error("Live must not request instruments");
+    },
+    events: () => {
+      throw new Error("Live must not request instrument events");
+    },
+    mixed: (time) => ({
+      feature: feature(),
+      events: [{ timestamp: time, intensity: 0.8 }],
+    }),
+  };
+  const model = new MixedChoreography(source),
+    f = settle(model);
+  const paths = f.paths.slice(0, f.pathCount);
+  expect(paths.some((p) => p.color === 0xff3ebb)).toBe(true);
+  expect(paths.some((p) => p.color === 0x6eb4ff)).toBe(true);
+  const diamonds = paths.filter((p) => p.count === 5 && p.color === 0xc4a5ff);
+  expect(diamonds.length).toBeGreaterThan(0);
+  expect(diamonds.length).toBeLessThanOrEqual(10);
+  for (const p of diamonds) {
+    expect(p.points[0]).toBe(p.points[8]);
+    expect(p.points[1]).toBe(p.points[9]);
+    expect(p.points[3]).toBe(p.points[7]);
+    expect(p.points[2]).toBeGreaterThan(p.points[6]);
+  }
+  expect(
+    paths.filter((p) => p.count === 2 && p.color === 0xc4a5ff).length,
+  ).toBeGreaterThanOrEqual(diamonds.length * 2);
+  expect(f.pathCount).toBeLessThan(LIMITS.paths);
+});
+
+it("Piano markers follow the bloom control and fade with absent input", () => {
+  const { model, set } = setup(feature(), true);
+  settle(model);
+  const s = state();
+  const without = model.update(
+    3100,
+    { ...s, layers: { ...s.layers, blooms: 0 } },
+    4416,
+    680,
+    {},
+    1,
+  );
+  expect(
+    without.paths.slice(0, without.pathCount).some((p) => p.count === 5),
+  ).toBe(false);
+  set(null);
+  for (let t = 3150; t <= 14000; t += 50) model.update(t, s, 4416, 680, {}, 1);
+  const silent = model.update(14050, s, 4416, 680, {}, 1);
+  expect(model.metrics.accents).toBe(0);
+  expect(
+    silent.paths.slice(0, silent.pathCount).some((p) => p.count === 5),
+  ).toBe(false);
+});
+
+it("keeps layered ribbon bundles readable while their spread fans and converges", () => {
+  for (const intensity of [0.03, 0.95]) {
+    const { model } = setup(
+      feature({
+        intensity,
+        bands: [intensity * 0.8, intensity * 0.4, intensity * 0.1],
+      }),
+    );
+    const f = settle(model, { ...state(), reduced: true }, 1, 4416, 896);
+    for (const [color, count] of [
+      [0xff3ebb, 9],
+      [0x6eb4ff, 6],
+    ]) {
+      const contours = f.paths
+        .slice(0, f.pathCount)
+        .filter((p) => !p.soft && p.count === 160 && p.color === color);
+      expect(contours.length).toBe(count);
+      expect(contours.every((p) => p.alpha > 0.035)).toBe(true);
+      const spans: number[] = [];
+      for (const u of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+        const j = Math.round(u * 159),
+          ys = contours.map((p) => p.points[j * 2 + 1]).sort((a, b) => a - b);
+        spans.push(ys.at(-1)! - ys[0]);
+        expect(spans.at(-1)).toBeGreaterThan(896 * 0.03);
+        for (let n = 1; n < ys.length; n++)
+          expect(ys[n] - ys[n - 1]).toBeGreaterThan(896 * 0.0025);
+      }
+      const glows = f.paths
+        .slice(0, f.pathCount)
+        .filter((p) => p.soft && p.count === 160 && p.color === color);
+      expect(glows.length).toBe(4);
+      expect(Math.max(...spans) / Math.min(...spans)).toBeGreaterThan(1.7);
+      // Diffusion surrounds the body instead of becoming a bright lower stripe.
+      const j = 80,
+        ys = contours.map((p) => p.points[j * 2 + 1]);
+      expect(
+        glows.filter(
+          (p) =>
+            p.points[j * 2 + 1] > Math.min(...ys) &&
+            p.points[j * 2 + 1] < Math.max(...ys),
+        ).length,
+      ).toBe(3);
+    }
+  }
+});
+
+it("preserves defining ribbon strands after secondary quality reduction", () => {
+  const { model } = setup();
+  const s = { ...state(), reduced: true };
+  const full = structuredClone(settle(model, s));
+  const lower = model.update(3100, s, 4416, 680, {}, 0.55);
+  for (const color of [0xff3ebb, 0x6eb4ff]) {
+    const count = (f: ScoreFrame) =>
+      f.paths
+        .slice(0, f.pathCount)
+        .filter((p) => !p.soft && p.count === 160 && p.color === color).length;
+    expect(count(lower)).toBe(count(full));
+  }
+});
+
+const flowerPaths = (f: ScoreFrame) =>
+  f.paths
+    .slice(0, f.pathCount)
+    .filter(
+      (p) =>
+        p.variableWidth &&
+        p.count % 48 === 0 &&
+        (p.color === 0xc4a5ff || p.color === 0xe3d1ff),
+    );
+const floral = (f: ScoreFrame) =>
+  f.paths
+    .slice(0, f.pathCount)
+    .filter(
+      (p) =>
+        p.color === 0xc4a5ff || (p.color === 0xe3d1ff && p.count % 48 === 0),
+    );
+function eventSetup(times = [3100, 3400], intensity = 1) {
+  let value: MixFeature | null = feature({
+    intensity: 0.95,
+    dynamics: 0,
+    shortEnergy: 0.2,
+    longEnergy: 0.2,
+  });
+  const model = new MixedChoreography({
+    frame: () => ({}) as never,
+    events: () => [],
+    mixed: (time, from) =>
+      value
+        ? {
+            feature: value,
+            events: times
+              .filter((t) => t > from && t <= time)
+              .map((timestamp) => ({ timestamp, intensity })),
+          }
+        : null,
+  });
+  return {
+    model,
+    set: (v: MixFeature | null) => {
+      value = v;
+    },
+  };
+}
+function advance(
+  model: MixedChoreography,
+  from: number,
+  to: number,
+  s = state(),
+  q = 1,
+  width = 4416,
+  height = 896,
+) {
+  let f!: ScoreFrame;
+  for (let t = from; t <= to; t += 50)
+    f = model.update(t, s, width, height, {}, q);
+  return f;
+}
+
+it("constant musical energy cannot sustain flowers, and quiet passages have no floral geometry", () => {
+  const { model, set } = eventSetup([]);
+  const initial = advance(model, 0, 3050);
+  expect(floral(initial)).toHaveLength(0);
+  set(feature({ intensity: 0.95, dynamics: 0.8 }));
+  advance(model, 3100, 3700);
+  expect(model.metrics.bloomEvents).toHaveLength(1);
+  const start = model.metrics.bloomEvents[0].time;
+  const expired = advance(model, 3750, 7500);
+  expect(model.metrics.bloomEvents).toHaveLength(0);
+  expect(floral(expired)).toHaveLength(0);
+  // Falling growth rearms the next measured rise, rather than cycling under constant input.
+  set(
+    feature({
+      intensity: 0.05,
+      dynamics: 0,
+      shortEnergy: 0.05,
+      longEnergy: 0.05,
+    }),
+  );
+  advance(model, 7550, 11000);
+  set(feature({ intensity: 0.95, dynamics: 0.8 }));
+  advance(model, 11050, 11700);
+  expect(model.metrics.bloomEvents).toHaveLength(1);
+  expect(model.metrics.bloomEvents[0].time).toBeGreaterThan(start + 2800);
+});
+
+it("creates one primary and one secondary event, with fixed expiry and no automatic promotion", () => {
+  const { model } = eventSetup([
+    3100, 3400, 3700, 4000, 4300, 4600, 4900, 5200, 5500, 5800, 6100, 6400,
+  ]);
+  advance(model, 0, 3950);
+  expect(model.metrics.bloomEvents.map((b) => b.role)).toEqual([
+    "primary",
+    "secondary",
+  ]);
+  const original = model.metrics.bloomEvents.map((b) => ({
+    slot: b.slot,
+    role: b.role,
+    time: b.time,
+    expires: b.expires,
+  }));
+  advance(model, 4000, 5850);
+  expect(
+    model.metrics.bloomEvents.map((b) => ({
+      slot: b.slot,
+      role: b.role,
+      time: b.time,
+      expires: b.expires,
+    })),
+  ).toEqual(original);
+  advance(model, 5900, 5900);
+  expect(model.metrics.bloomEvents.map((b) => b.role)).toEqual(["secondary"]);
+  advance(model, 5950, 6100);
+  expect(model.metrics.bloomEvents).toHaveLength(2);
+  const fresh = model.metrics.bloomEvents.find((b) => b.role === "primary")!;
+  expect(fresh.time).toBe(6100);
+  expect(fresh.slot).not.toBe(original[0].slot); // The original region is resting until 6350.
+  const done = advance(model, 6150, 10000);
+  expect(model.metrics.bloomEvents).toHaveLength(0);
+  expect(floral(done)).toHaveLength(0);
+});
+
+it("ignores weak bloom triggers while keeping line accents and freezes event geometry in Reduced Motion", () => {
+  const weak = eventSetup([3100], 0.44);
+  advance(weak.model, 0, 3600);
+  expect(weak.model.metrics.bloomEvents).toHaveLength(0);
+  expect(weak.model.metrics.accents).toBe(1);
+  const { model } = eventSetup([3100]);
+  const s = { ...state(), reduced: true };
+  advance(model, 0, 3650, s);
+  const a = structuredClone(model.update(3700, s, 4416, 896, {}, 1));
+  const b = model.update(3750, s, 4416, 896, {}, 1);
+  expect(flowerPaths(a).map((p) => Array.from(p.points))).toEqual(
+    flowerPaths(b).map((p) => Array.from(p.points)),
+  );
+  expect(flowerPaths(a)[0].alpha).not.toBe(flowerPaths(b)[0].alpha);
+  const end = advance(model, 3800, 6000, s);
+  expect(flowerPaths(end)).toHaveLength(0);
+});
+
+it("fades events through silence and Standby, then resumes Live without replay", () => {
+  for (const missing of [true, false]) {
+    const { model, set } = eventSetup([3100]);
+    advance(model, 0, 3650);
+    const before = Math.max(...model.metrics.blooms);
+    if (missing) set(null);
+    const s = missing ? state() : { ...state(), mode: "standby" as const };
+    advance(model, 3700, 3750, s);
+    expect(Math.max(...model.metrics.blooms)).toBeGreaterThan(0);
+    expect(Math.max(...model.metrics.blooms)).toBeLessThan(before);
+    const end = advance(model, 3800, 4400, s);
+    expect(model.metrics.bloomEvents).toHaveLength(0);
+    expect(flowerPaths(end)).toHaveLength(0);
+    set(feature({ dynamics: 0, shortEnergy: 0.2, longEnergy: 0.2 }));
+    advance(model, 4450, 5000);
+    expect(model.metrics.bloomEvents).toHaveLength(0);
+  }
+});
+
+it("keeps repeated onsets bounded and smooth without extending an event's lifetime", () => {
+  const { model } = eventSetup(
+    Array.from({ length: 60 }, (_, i) => 3100 + i * 300),
+  );
+  let previous = [0, 0, 0];
+  const lifetimes = new Map<number, number>();
+  const lastEnd = new Map<number, number>();
+  const seen = new Set<number>();
+  for (let t = 0; t <= 22000; t += 50) {
+    model.update(t, state(), 4416, 896, {}, 1);
+    const { bloomEvents, blooms } = model.metrics;
+    expect(
+      bloomEvents.filter((b) => b.role === "primary").length,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      bloomEvents.filter((b) => b.role === "secondary").length,
+    ).toBeLessThanOrEqual(1);
+    for (const b of bloomEvents) {
+      expect(b.expires - b.time).toBe(2800);
+      if (lifetimes.has(b.time)) expect(b.expires).toBe(lifetimes.get(b.time));
+      lifetimes.set(b.time, b.expires);
+      if (!seen.has(b.time)) {
+        expect(b.time).toBeGreaterThanOrEqual(
+          (lastEnd.get(b.slot) ?? -Infinity) + 450,
+        );
+        lastEnd.set(b.slot, b.expires);
+        seen.add(b.time);
+      }
+    }
+    for (let i = 0; i < 3; i++)
+      expect(Math.abs(blooms[i] - previous[i])).toBeLessThan(0.23);
+    previous = blooms;
+  }
+});
+
+it("reduces bloom scale by 30%, simplifies detail and retains the secondary hierarchy inside every artwork", () => {
+  for (const [width, height] of [
+    [4416, 896],
+    [900, 182],
+    [320, 500],
+  ]) {
+    const { model } = eventSetup();
+    const f = advance(model, 0, 3950, state(), 1, width, height);
+    const flowers = flowerPaths(f);
+    expect(flowers).toHaveLength(28); // Primary 54 florets, secondary 30, three per pooled path.
+    for (const p of flowers)
+      for (let j = 0; j < p.count; j++) {
+        expect(p.points[j * 2]).toBeGreaterThanOrEqual(0);
+        expect(p.points[j * 2]).toBeLessThanOrEqual(width);
+        expect(p.points[j * 2 + 1]).toBeGreaterThanOrEqual(0);
+        expect(p.points[j * 2 + 1]).toBeLessThanOrEqual(height);
+      }
+    const extents = (paths: typeof flowers) => {
+      const first = paths[0],
+        cx = first.points[0],
+        cy = first.points[1];
+      const radius = Math.max(
+        ...paths.flatMap((p) =>
+          Array.from({ length: p.count }, (_, j) =>
+            Math.hypot(p.points[j * 2] - cx, p.points[j * 2 + 1] - cy),
+          ),
+        ),
+      );
+      // Previous bounded radius, before the requested 0.70 size multiplier.
+      const previous = Math.min(
+        height * (0.055 + f.energy * 0.025 + 0.24),
+        width / ((width / height >= 3 ? 3 : 2) * 3.2),
+        Math.min(cx, width - cx, cy, height - cy) / 1.16,
+      );
+      return { radius, previous };
+    };
+    const primary = extents(flowers.slice(0, 18)),
+      secondary = extents(flowers.slice(18));
+    expect(primary.radius / primary.previous).toBeGreaterThan(0.65);
+    expect(primary.radius / primary.previous).toBeLessThan(0.77);
+    expect(secondary.radius / secondary.previous).toBeGreaterThan(0.42);
+    expect(secondary.radius / secondary.previous).toBeLessThan(0.5);
+    expect(flowers[22].alpha / flowers[8].alpha).toBeLessThan(0.7);
+  }
+});
+
+it("retains invisible pooled joins and ribbon geometry while the bloom control removes every flower", () => {
+  const { model } = eventSetup();
+  const f = structuredClone(advance(model, 0, 3950));
+  for (const p of flowerPaths(f))
+    for (let j = 0; j < p.count; j += 48) {
+      for (const k of [0, 13, 14, 46, 47]) expect(p.widths![j + k]).toBe(0);
+      expect(p.widths![j + 25]).toBeGreaterThan(0.7);
+    }
+  const s = state();
+  const without = model.update(
+    3950,
+    { ...s, layers: { ...s.layers, blooms: 0 } },
+    4416,
+    896,
+    {},
+    1,
+  );
+  expect(flowerPaths(without)).toHaveLength(0);
+  expect(Array.from(core(f).points)).toEqual(Array.from(core(without).points));
+});
+
+it("reduces rear flower detail at lower quality and stays within the existing resource budgets", () => {
+  const render = (q: number) => {
+    const { model } = eventSetup();
+    return structuredClone(advance(model, 0, 3950, state(), q));
+  };
+  const full = render(1),
+    low = render(0.35);
+  expect(flowerPaths(full)).toHaveLength(28);
+  expect(flowerPaths(low)).toHaveLength(15);
+  expect(flowerPaths(low).some((p) => p.color === 0xe3d1ff)).toBe(true);
+  expect(full.pathCount).toBeLessThan(256);
+  expect(low.pathCount).toBeLessThan(256);
+  expect(full.lightCount).toBeLessThanOrEqual(180);
+});
+
+it("coalesces an onset and a growth edge from the same musical change", () => {
+  const { model, set } = eventSetup([3100]);
+  advance(model, 0, 3050);
+  set(feature({ intensity: 0.95, dynamics: 0.8 }));
+  advance(model, 3100, 3400);
+  expect(model.metrics.bloomEvents).toHaveLength(1);
+  expect(model.metrics.bloomEvents[0].role).toBe("primary");
 });
