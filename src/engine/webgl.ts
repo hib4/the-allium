@@ -140,8 +140,10 @@ export class WebGLBackend implements RenderBackend {
         const dx = p.points[after * 2] - p.points[before * 2],
           dy = p.points[after * 2 + 1] - p.points[before * 2 + 1];
         const length = Math.max(0.001, Math.hypot(dx, dy));
-        const normalX = (-dy / length) * p.width * 0.5,
-          normalY = (dx / length) * p.width * 0.5;
+        const halfWidth =
+          p.width * 0.5 * (p.variableWidth ? (p.widths?.[n] ?? 1) : 1);
+        const normalX = (-dy / length) * halfWidth,
+          normalY = (dx / length) * halfWidth;
         vertices.set(
           [x + normalX, y + normalY, x - normalX, y - normalY],
           n * 4,

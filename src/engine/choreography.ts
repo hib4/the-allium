@@ -31,6 +31,9 @@ export interface Stroke {
   color: number;
   alpha: number;
   soft: boolean;
+  /** Optional per-point width multipliers; absent/disabled preserves Demo strokes. */
+  widths?: Float32Array;
+  variableWidth?: boolean;
 }
 export interface Light {
   x: number;

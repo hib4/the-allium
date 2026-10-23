@@ -101,3 +101,5 @@ See [audio verification results](docs/audio-verification.md) for automated check
 Portable native packaging is in [release/README.md](release/README.md). Operators use the bundled Start/Stop launchers instead of installing development runtimes. [Panduan Operator](docs/release/Panduan-Operator.html) contains Bahasa Indonesia setup, troubleshooting, acceptance and rollback guidance. The dashboard can export/restore settings and export diagnostics.
 
 The macOS ARM64 package is built locally; Windows x64 build tooling is supplied, but its native artifact and validation remain pending. Existing native archives must be rebuilt for these source changes. Neither package status nor synthetic software tests establish physical venue-device compatibility. Runtime settings/logs are stored separately from release folders.
+
+Live visual mappings, operator checks and the isolated panoramic rendering benchmark are documented in [Live choreography](docs/live-visuals.md).

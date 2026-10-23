@@ -170,6 +170,11 @@ it("mixed geometry stays bounded, silent without input, and responds to layer co
   for (let t = 5100; t < 8100; t += 34)
     model.update(t, s.state, 4416, 680, {}, 1);
   expect(model.update(8100, s.state, 4416, 680, {}, 1).energy).toBeLessThan(
+    0.02, // 800 ms release preserves phrase continuity rather than snapping to black.
+  );
+  for (let t = 8134; t <= 12010; t += 34)
+    model.update(t, s.state, 4416, 680, {}, 1);
+  expect(model.update(12020, s.state, 4416, 680, {}, 1).energy).toBeLessThan(
     0.001,
   );
   s.dispose();

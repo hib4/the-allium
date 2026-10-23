@@ -1,5 +1,7 @@
 # Mixed audio and panoramic display verification
 
+The subsequent braided Live refinement has its own [current verification results and rendering benchmark](live-visuals.md#verification-of-this-refinement). The microphone measurements below remain historical hardware evidence.
+
 Software checks performed on 22 October 2026 in the development workspace. No venue USB interface or LED processor was used. The subsequent built-in-microphone check below used actual local hardware. Tests use isolated configurations and explicitly synthetic PCM; capture tests use input-driver test doubles. Historical packaged-release measurements in `docs/release/VALIDATION.md` apply to earlier code.
 
 ## Results

@@ -1,4 +1,4 @@
-import type { ScoreFrame, Stroke } from "./choreography";
+import { LIMITS, type ScoreFrame } from "./choreography";
 export interface RenderBackend {
   readonly name: "webgl" | "canvas";
   resize(width: number, height: number, resolution: number): void;
@@ -12,6 +12,7 @@ export class CanvasBackend implements RenderBackend {
   private width = 1;
   private height = 1;
   private resolution = 1;
+  private offsets = new Float32Array(LIMITS.points * 2);
   constructor(private canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext("2d", { alpha: false });
     if (!ctx) throw new Error("Canvas unavailable");
@@ -40,24 +41,55 @@ export class CanvasBackend implements RenderBackend {
       // Integrate a Gaussian cross-section with bounded nested strokes.
       // The widest strokes carry almost no opacity; the core accumulates light
       // continuously instead of leaving three opaque contour bands.
+      if (p.variableWidth) {
+        // One continuous tapered strip avoids bright round-cap seams between spans.
+        // Reuse normals across all feather passes instead of allocating geometry.
+        for (let j = 0; j < p.count; j++) {
+          const before = Math.max(0, j - 1),
+            after = Math.min(p.count - 1, j + 1);
+          const dx = p.points[after * 2] - p.points[before * 2];
+          const dy = p.points[after * 2 + 1] - p.points[before * 2 + 1];
+          const halfWidth =
+            (p.width * (p.widths?.[j] ?? 1) * 0.5) /
+            Math.max(0.001, Math.hypot(dx, dy));
+          this.offsets[j * 2] = -dy * halfWidth;
+          this.offsets[j * 2 + 1] = dx * halfWidth;
+        }
+      }
       const passes = p.soft ? 24 : 1;
+      c.fillStyle = c.strokeStyle;
       for (let pass = 0; pass < passes; pass++) {
-        const outer = 1 - pass / passes;
-        const inner = 1 - (pass + 1) / passes;
+        const outer = 1 - pass / passes,
+          inner = 1 - (pass + 1) / passes;
         const feather = p.soft
           ? (Math.exp(-((inner / 0.34) ** 2)) -
               Math.exp(-((outer / 0.34) ** 2))) *
             0.85
           : 1;
+        const scale = p.soft ? (outer + inner) * 0.5 : 1;
         c.globalAlpha = Math.min(1, p.alpha * feather);
-        c.lineWidth = p.width * (p.soft ? (outer + inner) * 0.5 : 1);
         c.beginPath();
-        for (let j = 0; j < p.count; j++) {
-          const x = p.points[j * 2],
-            y = p.points[j * 2 + 1];
-          j === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+        if (p.variableWidth) {
+          for (let side = 0; side < 2; side++)
+            for (let n = 0; n < p.count; n++) {
+              const j = side ? p.count - 1 - n : n,
+                sign = side ? -1 : 1;
+              const x = p.points[j * 2] + this.offsets[j * 2] * scale * sign;
+              const y =
+                p.points[j * 2 + 1] + this.offsets[j * 2 + 1] * scale * sign;
+              side === 0 && n === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+            }
+          c.closePath();
+          c.fill();
+        } else {
+          c.lineWidth = p.width * scale;
+          for (let j = 0; j < p.count; j++) {
+            const x = p.points[j * 2],
+              y = p.points[j * 2 + 1];
+            j === 0 ? c.moveTo(x, y) : c.lineTo(x, y);
+          }
+          c.stroke();
         }
-        c.stroke();
       }
     }
     c.globalCompositeOperation = "lighter";

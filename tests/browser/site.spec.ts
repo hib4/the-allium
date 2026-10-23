@@ -5,7 +5,8 @@ test("Experience autoplays once, removes score titles, and preserves manual paus
 }) => {
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto("/experience");
-  await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+  await expect(page.locator(".stage-status")).toContainText("DEMO PLAYING");
+  await expect(page.locator(".stage-status")).toBeHidden();
   await expect(page.locator(".score-labels")).toHaveCount(0);
   await expect(page.locator(".score .sr-only")).toContainText("Visual score:");
   await page.screenshot({
@@ -15,7 +16,9 @@ test("Experience autoplays once, removes score titles, and preserves manual paus
   await page.setViewportSize({ width: 320, height: 800 });
   await page.waitForTimeout(350);
   expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth),
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
   ).toBe(true);
   await page.screenshot({
     path: ".impeccable/review/experience-autoplay-mobile.png",
@@ -23,10 +26,12 @@ test("Experience autoplays once, removes score titles, and preserves manual paus
   });
   await page.getByRole("button", { name: "Pause", exact: true }).click();
   await page.waitForTimeout(750);
-  await expect(page.getByText("DEMO PAUSED")).toBeVisible();
-  await page.getByRole("button", { name: "Performance view", exact: true }).click();
+  await expect(page.locator(".stage-status")).toContainText("DEMO PAUSED");
+  await page
+    .getByRole("button", { name: "Performance view", exact: true })
+    .click();
   await page.waitForTimeout(750);
-  await expect(page.getByText("DEMO PAUSED")).toBeVisible();
+  await expect(page.locator(".stage-status")).toContainText("DEMO PAUSED");
 });
 
 for (const mode of ["live", "standby"] as const) {
@@ -51,7 +56,9 @@ for (const mode of ["live", "standby"] as const) {
 test("leaving Experience cancels pending autoplay", async ({ page }) => {
   await page.goto("/");
   await page.getByRole("link", { name: "Experience", exact: true }).click();
-  await page.getByRole("link", { name: "Visual language", exact: true }).click();
+  await page
+    .getByRole("link", { name: "Visual language", exact: true })
+    .click();
   await page.waitForTimeout(750);
   const playing = await page.evaluate(async () => {
     const path = "/src/engine/session.ts";
@@ -71,9 +78,9 @@ test("operator controls a display tab and sends readable Unicode captions", asyn
   await page.bringToFront();
   await expect(page.getByText("1 display connected")).toBeVisible();
   await display.waitForTimeout(750);
-  await expect(display.getByText("DEMO PAUSED")).toBeVisible();
+  await expect(display.locator(".stage-status")).toContainText("DEMO PAUSED");
   await page.getByRole("button", { name: "Play demo", exact: true }).click();
-  await expect(display.getByText("DEMO PLAYING")).toBeVisible();
+  await expect(display.locator(".stage-status")).toContainText("DEMO PLAYING");
   await page.getByRole("button", { name: "Guitar Focus", exact: true }).click();
   await expect(
     display.getByRole("button", { name: "Guitar Focus", exact: true }),
@@ -90,7 +97,7 @@ test("operator controls a display tab and sends readable Unicode captions", asyn
     display.getByText("A little space between the words."),
   ).toBeVisible();
   await page.getByRole("button", { name: "Pause", exact: true }).click();
-  await expect(display.getByText("DEMO PAUSED")).toBeVisible();
+  await expect(display.locator(".stage-status")).toContainText("DEMO PAUSED");
 });
 test("routes reflow at 320px and every control has a useful state", async ({
   page,
@@ -181,7 +188,7 @@ test("Canvas failure leaves readable captions and functional controls", async ({
       "Animated score unavailable. Captions and controls remain available.",
     ),
   ).toBeVisible();
-  await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+  await expect(page.locator(".stage-status")).toContainText("DEMO PLAYING");
   await expect(
     page.getByText("This space belongs to all of us."),
   ).toBeVisible();
@@ -299,7 +306,7 @@ test("GPU context loss replaces the canvas without losing demo or captions", asy
     "data-renderer",
     "webgl",
   );
-  await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+  await expect(page.locator(".stage-status")).toContainText("DEMO PLAYING");
   await page.evaluate(() =>
     document
       .querySelector(".score-renderer canvas")!
@@ -309,7 +316,7 @@ test("GPU context loss replaces the canvas without losing demo or captions", asy
     "data-renderer",
     "canvas",
   );
-  await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+  await expect(page.locator(".stage-status")).toContainText("DEMO PLAYING");
   await expect(page.locator(".captions")).toBeVisible();
   await page.waitForTimeout(500);
   expect(errors).toEqual([]);
@@ -440,7 +447,7 @@ test("all four demo pages render saxophone in ensembles and after individual sel
   for (const route of ["/", "/experience", "/tutorial", "/follow"]) {
     await page.goto(`${route}?renderer=canvas`);
     if (route === "/experience")
-      await expect(page.getByText("DEMO PLAYING")).toBeVisible();
+      await expect(page.locator(".stage-status")).toContainText("DEMO PLAYING");
     if (route === "/tutorial")
       await page.getByRole("button", { name: "Together", exact: true }).click();
     const hasAmber = () =>
