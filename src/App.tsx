@@ -835,6 +835,25 @@ function Control() {
                   <h2>Live visual layers</h2>
                   <span>MEASURED MIX</span>
                 </div>
+                <label className="choreography-select">
+                  Live choreography
+                  <select
+                    aria-label="Live choreography"
+                    value={state.liveChoreography}
+                    disabled={status.locked}
+                    onChange={(e) =>
+                      concert.update({
+                        liveChoreography: e.target.value as
+                          "current" | "living",
+                      })
+                    }
+                  >
+                    <option value="current">Current</option>
+                    <option value="living">
+                      Living Composition (Experimental)
+                    </option>
+                  </select>
+                </label>
                 {liveLayers.map((layer, index) => (
                   <div className="live-layer" key={layer}>
                     <Slider

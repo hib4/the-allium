@@ -13,7 +13,10 @@
     "test:audio": "node scripts/audio-tests.mjs",
     "test:integration": "npm run build && playwright test --config playwright.audio.config.ts",
     "release:mac": "npm run build && .venv/bin/python release/build.py",
-    "test:soak": "node scripts/soak.mjs"
+    "test:soak": "node scripts/soak.mjs",
+    "visuals:record": "node scripts/living-comparison.mjs record",
+    "visuals:compare": "node scripts/living-comparison.mjs compare",
+    "visuals:fixture": "node scripts/living-comparison.mjs fixture"
   },
   "dependencies": {
     "@fontsource/atkinson-hyperlegible-next": "^5.2.5",

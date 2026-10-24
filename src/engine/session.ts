@@ -28,6 +28,7 @@ export class BrowserTransport implements Transport {
   }
 }
 const initial = (): SessionState => ({
+  liveChoreography: "current",
   layers: defaultLayers(),
   displayProfile: "responsive",
   calibration: false,
@@ -54,6 +55,7 @@ const initial = (): SessionState => ({
 export function upgradeState(value: unknown): unknown {
   if (!value || typeof value !== "object" || Array.isArray(value)) return value;
   return {
+    liveChoreography: "current",
     layers: defaultLayers(),
     displayProfile: "responsive",
     calibration: false,
@@ -64,6 +66,7 @@ export function validState(v: unknown): v is SessionState {
   if (!v || typeof v !== "object") return false;
   const s = v as SessionState;
   return (
+    ["current", "living"].includes(s.liveChoreography) &&
     !!s.layers &&
     liveLayers.every(
       (k) =>

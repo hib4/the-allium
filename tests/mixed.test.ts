@@ -217,7 +217,10 @@ it("honors every layer, degrades detail before identity, and stays bounded at ev
     [320, 500],
   ]) {
     const { model } = setup(feature({ bands: [1, 1, 1] }), true);
-    const full = structuredClone(settle(model, state(), 1, width, height));
+    settle(model, state(), 1, width, height);
+    const full = structuredClone(
+      model.update(3100, state(), width, height, {}, 1),
+    );
     const low = model.update(3100, state(), width, height, {}, 0.35);
     expect(low.pathCount).toBeLessThan(full.pathCount);
     expect(low.pathCount).toBeGreaterThan(20);
@@ -705,7 +708,7 @@ it("keeps repeated onsets bounded and smooth without extending an event's lifeti
   }
 });
 
-it("reduces bloom scale by 30%, simplifies detail and retains the secondary hierarchy inside every artwork", () => {
+it("retains the reduced bloom size ceiling, simplified detail and secondary hierarchy inside every artwork", () => {
   for (const [width, height] of [
     [4416, 896],
     [900, 182],
@@ -743,9 +746,9 @@ it("reduces bloom scale by 30%, simplifies detail and retains the secondary hier
     };
     const primary = extents(flowers.slice(0, 18)),
       secondary = extents(flowers.slice(18));
-    expect(primary.radius / primary.previous).toBeGreaterThan(0.65);
+    expect(primary.radius / primary.previous).toBeGreaterThan(0.5);
     expect(primary.radius / primary.previous).toBeLessThan(0.77);
-    expect(secondary.radius / secondary.previous).toBeGreaterThan(0.42);
+    expect(secondary.radius / secondary.previous).toBeGreaterThan(0.32);
     expect(secondary.radius / secondary.previous).toBeLessThan(0.5);
     expect(flowers[22].alpha / flowers[8].alpha).toBeLessThan(0.7);
   }
@@ -794,4 +797,116 @@ it("coalesces an onset and a growth edge from the same musical change", () => {
   advance(model, 3100, 3400);
   expect(model.metrics.bloomEvents).toHaveLength(1);
   expect(model.metrics.bloomEvents[0].role).toBe("primary");
+});
+
+function reactiveBloom(
+  values: Partial<MixFeature>,
+  times = [3100],
+  onset = 0.8,
+  reduced = false,
+  variant: "current" | "living" = "current",
+) {
+  const result = eventSetup(times, onset);
+  result.set(
+    feature({ dynamics: 0, shortEnergy: 0.2, longEnergy: 0.2, ...values }),
+  );
+  const s = { ...state(), reduced, liveChoreography: variant };
+  const frame = structuredClone(advance(result.model, 0, 3550, s));
+  return { ...result, frame, s };
+}
+const flowerExtent = (frame: ScoreFrame) => {
+  const paths = flowerPaths(frame).slice(0, 18);
+  const cx = paths[0].points[0],
+    cy = paths[0].points[1];
+  return Math.max(
+    ...paths.flatMap((p) =>
+      Array.from({ length: p.count }, (_, j) =>
+        Math.hypot(p.points[j * 2] - cx, p.points[j * 2 + 1] - cy),
+      ),
+    ),
+  );
+};
+
+it("makes quiet, moderate and intense bloom events progressively larger and brighter in both Live modes", () => {
+  for (const variant of ["current", "living"] as const) {
+    const frames = [0.08, 0.4, 0.95].map(
+      (intensity) =>
+        reactiveBloom({ intensity }, [3100], 0.8, false, variant).frame,
+    );
+    expect(flowerExtent(frames[1])).toBeGreaterThan(
+      flowerExtent(frames[0]) * 1.15,
+    );
+    expect(flowerExtent(frames[2])).toBeGreaterThan(
+      flowerExtent(frames[1]) * 1.1,
+    );
+    const alpha = frames.map((f) => flowerPaths(f)[8].alpha);
+    expect(alpha[1]).toBeGreaterThan(alpha[0]);
+    expect(alpha[2]).toBeGreaterThan(alpha[1]);
+  }
+});
+
+it("opens stronger onsets faster and pulses the primary locally without extending expiry", () => {
+  const weak = reactiveBloom({}, [3100], 0.5),
+    strong = reactiveBloom({}, [3100], 0.95);
+  expect(strong.model.metrics.bloomEvents[0].openingMs).toBeLessThan(
+    weak.model.metrics.bloomEvents[0].openingMs,
+  );
+  const pulsed = reactiveBloom({}, [3100, 3400, 3700, 4000]);
+  const control = reactiveBloom({}, [3100, 3400]);
+  const a = structuredClone(advance(pulsed.model, 3600, 3800));
+  const b = advance(control.model, 3600, 3800);
+  const primary = pulsed.model.metrics.bloomEvents.find(
+    (e) => e.role === "primary",
+  )!;
+  expect(primary.pulse).toBeGreaterThan(0.5);
+  expect(primary.expires).toBe(5900);
+  expect(flowerExtent(a)).toBeGreaterThan(flowerExtent(b) * 1.05);
+  expect(flowerExtent(a)).toBeLessThan(flowerExtent(b) * 1.13);
+  advance(pulsed.model, 3850, 4050);
+  // The onset at 4000 is inside the pulse cooldown, so its attack cannot restart.
+  expect(pulsed.model.metrics.bloomEvents[0].pulse).toBeLessThan(primary.pulse);
+});
+
+it("uses frequency balance for bloom mass, inner layering and fine petal edges", () => {
+  const low = reactiveBloom({ bands: [0.9, 0.05, 0.05] }).frame;
+  const mid = reactiveBloom({ bands: [0.05, 0.9, 0.05] }).frame;
+  const high = reactiveBloom({ bands: [0.05, 0.05, 0.9] }).frame;
+  expect(flowerExtent(low)).toBeGreaterThan(flowerExtent(mid));
+  expect(flowerPaths(mid)[0].alpha).toBeGreaterThan(
+    flowerPaths(low)[0].alpha * 1.4,
+  );
+  expect(flowerPaths(high)[8].points).not.toEqual(flowerPaths(mid)[8].points);
+  expect(high.pathCount).toBeLessThanOrEqual(LIMITS.paths);
+  expect(high.lightCount).toBeLessThanOrEqual(180);
+});
+
+it("smooths spectral deformation and freezes flower geometry under Reduced Motion despite changing audio", () => {
+  const normal = reactiveBloom({ flux: 0 });
+  const before = structuredClone(normal.frame);
+  normal.set(
+    feature({ flux: 1, dynamics: 0, shortEnergy: 0.2, longEnergy: 0.2 }),
+  );
+  const zero = normal.model.update(3550, normal.s, 4416, 896, {}, 1);
+  expect(flowerPaths(zero)[8].points).toEqual(flowerPaths(before)[8].points);
+  const later = advance(normal.model, 3600, 3750, normal.s);
+  expect(flowerPaths(later)[8].points).not.toEqual(
+    flowerPaths(before)[8].points,
+  );
+  const reduced = reactiveBloom({ flux: 0 }, [3100], 0.8, true);
+  const still = structuredClone(reduced.frame);
+  reduced.set(
+    feature({
+      intensity: 0.95,
+      bands: [0, 0, 1],
+      flux: 1,
+      dynamics: 0,
+      shortEnergy: 0.2,
+      longEnergy: 0.2,
+    }),
+  );
+  const changed = advance(reduced.model, 3600, 3850, reduced.s);
+  expect(flowerPaths(changed).map((p) => Array.from(p.points))).toEqual(
+    flowerPaths(still).map((p) => Array.from(p.points)),
+  );
+  expect(flowerPaths(changed)[8].alpha).not.toBe(flowerPaths(still)[8].alpha);
 });

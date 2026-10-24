@@ -621,3 +621,46 @@ test("named mono microphone controls show raw levels independently of the visual
     ),
   ).toBe(true);
 });
+
+test("experimental choreography synchronizes and returns immediately without restarting capture", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/control");
+  await page.getByRole("button", { name: "Live", exact: true }).click();
+  const selector = page.getByLabel("Live choreography", { exact: true });
+  await expect(selector).toHaveValue("current");
+  const stream = await page.evaluate(async () => {
+    const p = await fetch("/api/config").then((r) => r.json());
+    return p.revision;
+  });
+  const display = await context.newPage();
+  await display.setViewportSize({ width: 4416, height: 896 });
+  await display.goto("/experience?performance=1");
+  await selector.selectOption("living");
+  // A second operator is read-only but receives the same synchronized choice.
+  const observer = await context.newPage();
+  await observer.goto("/control");
+  await expect(
+    observer.getByLabel("Live choreography", { exact: true }),
+  ).toHaveValue("living");
+  await expect(
+    observer.getByLabel("Live choreography", { exact: true }),
+  ).toBeDisabled();
+  await expect(display.locator("canvas")).toBeVisible();
+  await selector.selectOption("current");
+  await expect(
+    observer.getByLabel("Live choreography", { exact: true }),
+  ).toHaveValue("current");
+  expect(
+    await page.evaluate(async () => {
+      const p = await fetch("/api/config").then((r) => r.json());
+      return p.revision;
+    }),
+  ).toBe(stream);
+  await page.getByRole("button", { name: "Demo", exact: true }).click();
+  await expect(
+    page.getByLabel("Live choreography", { exact: true }),
+  ).toHaveCount(0);
+  await expect(display.locator("canvas")).toBeVisible();
+});

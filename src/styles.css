@@ -1953,10 +1953,9 @@ textarea {
 }
 .usb-meters > div {
   display: grid;
-  grid-template-columns: minmax(90px, 0.8fr) minmax(60px, 1fr) minmax(
-      110px,
-      auto
-    ) 36px;
+  grid-template-columns:
+    minmax(90px, 0.8fr) minmax(60px, 1fr) minmax(110px, auto)
+    36px;
   gap: 12px;
   align-items: center;
   min-height: 36px;
@@ -2138,4 +2137,16 @@ textarea {
   .mix-inputs {
     grid-template-columns: minmax(0, 1fr);
   }
+}
+
+.choreography-select {
+  display: grid;
+  gap: 8px;
+  margin: 16px 0 24px;
+  color: var(--muted);
+  font-size: 14px;
+}
+.choreography-select select {
+  width: 100%;
+  min-width: 0;
 }

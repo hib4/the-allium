@@ -55,6 +55,7 @@ export const defaultLayers = (): Record<LiveLayer, number> => ({
   blooms: 0.8,
 });
 export interface SessionState {
+  liveChoreography: "current" | "living";
   layers: Record<LiveLayer, number>;
   displayProfile: "responsive" | "venue";
   calibration: boolean;
