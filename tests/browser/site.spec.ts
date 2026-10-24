@@ -73,6 +73,7 @@ test("operator controls a display tab and sends readable Unicode captions", asyn
   page,
 }) => {
   await page.goto("/control");
+  await page.getByLabel("Show captions", { exact: true }).check();
   const display = await context.newPage();
   await display.goto("/experience");
   await page.bringToFront();
@@ -134,6 +135,12 @@ test("panoramic performance view keeps captions and hides website chrome", async
   await page.setViewportSize({ width: 3840, height: 768 });
   await page.goto("/experience?performance=1");
   await expect(page.locator(".site-header")).toHaveCount(0);
+  await expect(page.locator(".captions")).toHaveCount(0);
+  await page.evaluate(async () => {
+    const path = "/src/engine/session.ts";
+    const { concert } = await import(path);
+    concert.update({ captions: true });
+  });
   await expect(page.locator(".captions")).toBeVisible();
   await expect(page.locator("canvas")).toBeVisible();
   expect(
@@ -183,6 +190,7 @@ test("Canvas failure leaves readable captions and functional controls", async ({
       null) as typeof HTMLCanvasElement.prototype.getContext;
   });
   await page.goto("/experience");
+  await page.getByLabel("Captions", { exact: true }).check();
   await expect(
     page.getByText(
       "Animated score unavailable. Captions and controls remain available.",
@@ -233,6 +241,7 @@ test("maximum focus intensity uses valid Canvas opacity and long Unicode cues fi
     });
   });
   await page.goto("/control");
+  await page.getByLabel("Show captions", { exact: true }).check();
   const display = await context.newPage();
   await display.setViewportSize({ width: 3840, height: 768 });
   await display.goto("/experience?performance=1");
@@ -302,6 +311,7 @@ test("GPU context loss replaces the canvas without losing demo or captions", asy
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/experience");
+  await page.getByLabel("Captions", { exact: true }).check();
   await expect(page.locator(".score-renderer")).toHaveAttribute(
     "data-renderer",
     "webgl",

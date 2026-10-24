@@ -1,3 +1,4 @@
+import { compareRegressions } from "./visual-regressions.mjs";
 /** Explicit developer capture/comparison. No production route, audio writes, or PCM recording. */
 import { chromium } from "@playwright/test";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
@@ -9,8 +10,20 @@ const { values, positionals } = parseArgs({
     input: { type: "string" },
     output: { type: "string" },
     headful: { type: "boolean", default: false },
+    variants: { type: "string", default: "current,living,original,combined" },
   },
 });
+const variants = values.variants.split(",");
+if (
+  !variants.length ||
+  variants.some(
+    (v) => !["current", "living", "original", "combined"].includes(v),
+  ) ||
+  new Set(variants).size !== variants.length
+)
+  throw Error(
+    "Use unique comma-separated --variants: current,living,original,combined.",
+  );
 const command = positionals[0];
 if (!["record", "compare", "fixture"].includes(command))
   throw Error("Use record, compare --input FILE, or fixture.");
@@ -50,7 +63,11 @@ try {
       body: '<!doctype html><html><body style="margin:0;background:#05091c"><div id="field" style="width:100vw;height:100vh"></div></body></html>',
     }),
   );
-  await page.goto(command === "record" ? `${base}/fonts/LICENSE.txt` : `${base}/__living-comparison`);
+  await page.goto(
+    command === "record"
+      ? `${base}/fonts/LICENSE.txt`
+      : `${base}/__living-comparison`,
+  );
   if (command === "record") {
     console.log(
       `Capturing ${seconds}s of measured features from the currently selected input. Play your music now. No PCM or device identifiers are saved.`,
@@ -236,7 +253,7 @@ try {
       errors,
     };
     for (const backend of ["webgl", "canvas"])
-      for (const variant of ["current", "living"]) {
+      for (const variant of variants) {
         console.log(
           `Comparing ${variant} / ${backend} (${timeline.kind}, ${Math.min(seconds * 1000, timeline.duration) / 1000}s)`,
         );
@@ -428,14 +445,8 @@ try {
           }),
         );
       }
-    report.regressions = ["webgl", "canvas"].map((backend) => {
-      const rows = report.results.filter((r) => r.requestedBackend === backend);
-      return {
-        backend,
-        p95Ratio: rows[1].p95 / rows[0].p95,
-        withinTenPercent: rows[1].p95 <= rows[0].p95 * 1.1,
-      };
-    });
+    report.regressions = compareRegressions(report.results);
+    report.regressionBaseline = variants.includes("current") ? "current" : null;
     await writeFile(
       `${directory}/comparison.json`,
       JSON.stringify(report, null, 2),

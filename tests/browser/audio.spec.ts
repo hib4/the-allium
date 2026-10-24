@@ -20,6 +20,7 @@ test("mixed input controls feed measured layers and synchronize the venue displa
   const errors: string[] = [];
   page.on("pageerror", (e) => errors.push(e.message));
   await page.goto("/control");
+  await page.getByLabel("Show captions", { exact: true }).check();
   await expect(
     page.getByText("SERVICE CONNECTED", { exact: true }),
   ).toBeVisible();
@@ -334,6 +335,11 @@ test("hiding captions removes the band, fills the stage and preserves cues acros
   const display = await context.newPage();
   await display.setViewportSize({ width: 1920, height: 1080 });
   await display.goto("/experience?performance=1");
+  await expect(
+    page.getByLabel("Show captions", { exact: true }),
+  ).not.toBeChecked();
+  await expect(display.locator(".captions")).toHaveCount(0);
+  await page.getByLabel("Show captions", { exact: true }).check();
   await page
     .getByLabel("Caption text")
     .fill("Caption retained — selamat datang");
@@ -622,7 +628,7 @@ test("named mono microphone controls show raw levels independently of the visual
   ).toBe(true);
 });
 
-test("experimental choreography synchronizes and returns immediately without restarting capture", async ({
+test("Live choreographies synchronize and return immediately without restarting capture", async ({
   page,
   context,
 }) => {
@@ -648,6 +654,31 @@ test("experimental choreography synchronizes and returns immediately without res
     observer.getByLabel("Live choreography", { exact: true }),
   ).toBeDisabled();
   await expect(display.locator("canvas")).toBeVisible();
+  await selector.selectOption("original");
+  await expect(
+    observer.getByLabel("Live choreography", { exact: true }),
+  ).toHaveValue("original");
+  await expect(display.locator("canvas")).toBeVisible();
+  await selector.selectOption("combined");
+  await expect(
+    observer.getByLabel("Live choreography", { exact: true }),
+  ).toHaveValue("combined");
+  await expect(display.locator("canvas")).toBeVisible();
+  await page
+    .getByText("Settings backup and troubleshooting", { exact: true })
+    .click();
+  const pendingExport = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Export settings", exact: true })
+    .click();
+  const settings = await (await pendingExport).path();
+  if (!settings) throw new Error("Missing Combined settings export");
+  await selector.selectOption("living");
+  await page.getByLabel("Restore settings").setInputFiles(settings);
+  await expect(selector).toHaveValue("combined");
+  await expect(
+    observer.getByLabel("Live choreography", { exact: true }),
+  ).toHaveValue("combined");
   await selector.selectOption("current");
   await expect(
     observer.getByLabel("Live choreography", { exact: true }),

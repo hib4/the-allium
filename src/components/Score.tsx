@@ -208,7 +208,11 @@ export function Legend({
   );
 }
 export function useLocalDemo() {
-  const [session] = useState(() => new Session(false));
+  const [session] = useState(() => {
+    const demo = new Session(false);
+    demo.update({ captions: true });
+    return demo;
+  });
   useEffect(() => {
     session.play(true);
     return () => session.play(false);

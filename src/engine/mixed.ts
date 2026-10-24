@@ -1,3 +1,4 @@
+import { OriginalChoreography } from "./original";
 import { LivingComposition } from "./living";
 import {
   LIMITS,
@@ -57,6 +58,7 @@ export class MixedChoreography {
     energy: 0,
     time: 0,
   };
+  private original?: OriginalChoreography;
   private living = new LivingComposition();
   private variant = "current";
   private last = -1;
@@ -90,6 +92,10 @@ export class MixedChoreography {
   );
   get metrics() {
     return {
+      original:
+        this.variant === "original" || this.variant === "combined"
+          ? this.original?.metrics
+          : undefined,
       composition: { ...this.living.value },
       history: this.historySize,
       accents: this.accents.length,
@@ -208,6 +214,23 @@ export class MixedChoreography {
     options: RenderOptions,
     quality: number,
   ): ScoreFrame {
+    if (
+      state.liveChoreography === "original" ||
+      state.liveChoreography === "combined"
+    ) {
+      if (this.variant !== state.liveChoreography) {
+        this.original = new OriginalChoreography(this.source);
+        this.variant = state.liveChoreography;
+      }
+      return this.original!.update(
+        time,
+        state,
+        width,
+        height,
+        options,
+        quality,
+      );
+    }
     const discontinuity =
       this.mode === "" ||
       time < this.last ||
@@ -368,6 +391,11 @@ export class MixedChoreography {
       calm,
     );
     const living = experimental ? composition : null;
+    // Scenic development follows measured energy, never a free-running show clock.
+    const fullness = clamp(
+      this.energy * 0.65 +
+        (active && !state.reduced ? composition.fast : this.energy) * 0.35,
+    );
     const spatial =
       living && !state.reduced ? motion * (0.3 + this.energy * 0.7) : 0;
     const frame = this.frame;
@@ -506,6 +534,7 @@ export class MixedChoreography {
             this.phase * 0.24 +
             route * 1.9,
         );
+        const scenic = state.reduced ? 0 : motion * fullness;
         const y =
           route === 2
             ? 0.78 + Math.sin(u * TAU * 1.1 + 0.7) * (0.045 + low * 0.04)
@@ -515,6 +544,9 @@ export class MixedChoreography {
                 : foldA * 0.16 - foldB * (0.15 + low * 0.065)) +
               bend * (0.055 + mid * 0.075) +
               contour(u) * 0.45 +
+              Math.sin(u * TAU * 0.85 + route * 2.3 - this.phase * 0.09) *
+                scenic *
+                (0.035 + low * 0.055) +
               Math.sin(u * TAU * 2.2 + route * 1.6 - this.phase * 0.11) *
                 this.change *
                 0.025;
@@ -678,9 +710,7 @@ export class MixedChoreography {
       const spread =
         (living && !state.reduced ? 0.75 + living.expansion * 0.35 : 1) *
         height *
-        (route === 2
-          ? 0.045
-          : 0.12 + this.energy * 0.085 + this.levels[1] * 0.025);
+        (route === 2 ? 0.045 : 0.15 + fullness * 0.12 + this.levels[1] * 0.035);
       const width = Math.max(
         soft ? 0 : kind === "core" ? 1 : 0.75,
         height *
@@ -689,8 +719,8 @@ export class MixedChoreography {
             middle: 0.075,
             inner: 0.035,
             halo: 0.009,
-            core: 0.005,
-            strand: 0.0024,
+            core: 0.0065,
+            strand: 0.0032,
           }[kind] *
           (0.85 + this.energy * 0.25),
       );
@@ -700,10 +730,10 @@ export class MixedChoreography {
         readable *
         opacity *
         {
-          outer: 0.22,
-          middle: 0.25,
-          inner: 0.28,
-          halo: 0.32,
+          outer: 0.26,
+          middle: 0.34,
+          inner: 0.4,
+          halo: 0.46,
           core: 1,
           strand: 0.9,
         }[kind];
@@ -714,8 +744,8 @@ export class MixedChoreography {
         const u = j / (p.count - 1);
         // Related strands fan and reconverge without collapsing into one luminous stroke.
         const fan =
-          0.32 +
-          0.68 * (0.5 + 0.5 * Math.sin(u * TAU * 1.35 + route * 1.7)) ** 0.7;
+          0.28 +
+          0.72 * (0.5 + 0.5 * Math.sin(u * TAU * 1.35 + route * 1.7)) ** 0.7;
         const available = Math.max(
           0,
           Math.min(
@@ -730,6 +760,19 @@ export class MixedChoreography {
             : kind === "core" || kind === "halo"
               ? -0.5
               : 0;
+        // Different contours within one measured stream, not independent voices.
+        const strandFold =
+          kind === "strand"
+            ? Math.sin(
+                u * TAU * (0.8 + strand * 0.085) +
+                  strand * 1.4 +
+                  route -
+                  this.phase * 0.12,
+              ) *
+              Math.sin(u * Math.PI) *
+              band *
+              (0.12 + this.levels[1] * 0.24)
+            : 0;
         const texture =
           kind === "strand"
             ? readHistory(u, 3) *
@@ -742,6 +785,7 @@ export class MixedChoreography {
           base[j * 2 + 1] +
           band * fraction +
           texture +
+          strandFold +
           (kind === "strand"
             ? Math.sin(u * TAU * 2.6 + strand * 0.4 - this.phase * 0.2) *
               height *
@@ -749,23 +793,22 @@ export class MixedChoreography {
               0.002 *
               Math.sin(u * Math.PI)
             : 0);
-        const highlight = living
-          ? Math.exp(
-              -(
-                ((u -
-                  (living.focus +
-                    Math.sin(this.phase * 0.65 + route) * 0.12 * spatial)) /
-                  0.08) **
-                2
-              ),
-            )
-          : 0;
+        const highlight = Math.exp(
+          -(
+            ((u -
+              (living?.focus ?? 0.22 + route * 0.28) -
+              Math.sin(this.phase * 0.45 + route) * 0.14) /
+              0.1) **
+            2
+          ),
+        );
         const edge = clamp(u / 0.065) * clamp((1 - u) / 0.065);
         p.widths![j] = Math.max(
           0.015,
           edge *
             (0.5 + 0.5 * Math.sin(u * 8 + route + strand * 0.2) ** 2) *
-            (living ? 0.85 + highlight * living.luminosity * this.energy : 1),
+            (0.85 +
+              highlight * fullness * (living ? 0.8 + living.luminosity : 1)),
         );
       }
     };
@@ -812,8 +855,8 @@ export class MixedChoreography {
             state.layers.lines *
               strength *
               trace.energy *
-              Math.exp(-age / 420) *
-              0.18,
+              Math.exp(-age / 600) *
+              (0.2 + fullness * 0.14),
             false,
             true,
           );
@@ -827,6 +870,77 @@ export class MixedChoreography {
             }
         }
       }
+    // Distant contours occupy a wider depth field. Their roots and folds belong
+    // to the same spines; the low opacity keeps foreground crossings legible.
+    if (q > 0.5 && this.energy > 0.001)
+      for (let route = 0; route < 3; route++)
+        for (let side = -1; side <= 1; side += 2) {
+          const gain = state.layers[route === 2 ? "currents" : "lines"];
+          const p = path(
+            96,
+            height * 0.0012,
+            palette[route],
+            gain * strength * Math.sqrt(this.energy) * (0.12 + fullness * 0.12),
+            false,
+            true,
+          );
+          if (!p) continue;
+          for (let j = 0; j < p.count; j++) {
+            const u = j / (p.count - 1),
+              edge = Math.sin(u * Math.PI);
+            const root = sample(route, u);
+            p.points[j * 2] = root.x;
+            p.points[j * 2 + 1] = Math.max(
+              height * 0.06,
+              Math.min(
+                height * 0.94,
+                root.y +
+                  side *
+                    height *
+                    edge *
+                    (0.09 + fullness * 0.1) *
+                    (0.55 + 0.45 * Math.sin(u * TAU + route * 1.8) ** 2),
+              ),
+            );
+            p.widths![j] = Math.max(0.01, edge * edge);
+          }
+        }
+    // Translucent folded sheets add luminous mass between the fine strands.
+    // Four short meshes, rather than more primary systems or a full-screen wash.
+    if (q > 0.6 && !calm && this.energy > 0.001)
+      for (let route = 0; route < 2; route++)
+        for (let n = 0; n < 2; n++) {
+          const p = path(
+            128,
+            height * (0.026 + fullness * 0.02),
+            palette[route],
+            state.layers.lines * strength * Math.sqrt(this.energy) * 0.38,
+            true,
+            true,
+          );
+          if (!p) continue;
+          for (let j = 0; j < p.count; j++) {
+            const u = j / (p.count - 1),
+              root = sample(route, u),
+              edge = Math.sin(u * Math.PI);
+            p.points[j * 2] = root.x;
+            p.points[j * 2 + 1] =
+              root.y +
+              height *
+                edge *
+                Math.sin(
+                  u * TAU * (1.2 + n * 0.3) +
+                    route * 2 +
+                    n * 2.1 -
+                    this.phase * 0.12,
+                ) *
+                (0.028 + this.levels[1] * 0.055);
+            p.widths![j] = Math.max(
+              0.01,
+              edge * (0.3 + 0.7 * Math.sin(u * TAU * 1.6 + n + route) ** 2),
+            );
+          }
+        }
     // Soft diffusion surrounds the bodies; sharp strands remain readable above it.
     for (const kind of ["outer", "middle", "inner", "halo"] as const)
       for (const route of [2, 0, 1]) ribbon(route, kind);
@@ -837,6 +951,35 @@ export class MixedChoreography {
         ribbon(route, "strand", n, 1 - (n / (count - 1)) * 0.3);
       ribbon(route, "core");
     }
+    // Continuous highlights reveal the ribbon surface; only onsets make events.
+    if (active && !state.reduced && q > 0.5)
+      for (let route = 0; route < 2; route++) {
+        const u = clamp(
+          (living?.focus ?? 0.3 + route * 0.4) +
+            Math.sin(this.phase * 0.38 + route * 2) * 0.18,
+        );
+        for (let halo = 0; halo < 2; halo++) {
+          const p = path(
+            40,
+            height * (halo ? 0.0035 : 0.03),
+            halo ? (route ? 0xe3d1ff : 0xffc6e8) : palette[route],
+            state.layers.lines *
+              strength *
+              Math.sqrt(this.energy) *
+              (halo ? 0.62 : 0.48),
+            !halo,
+            true,
+          );
+          if (!p) continue;
+          for (let j = 0; j < p.count; j++) {
+            const t = j / (p.count - 1),
+              point = sample(route, u + (t - 0.5) * 0.18);
+            p.points[j * 2] = point.x;
+            p.points[j * 2 + 1] = point.y;
+            p.widths![j] = Math.max(0.01, Math.sin(t * Math.PI) ** 2);
+          }
+        }
+      }
     // An accepted onset is one coordinated local pulse, not a global brightness flash.
     for (const e of this.accents) {
       const age = Math.max(0, (time - e.time) / 1000),
@@ -915,7 +1058,8 @@ export class MixedChoreography {
           envelope *
           (secondary ? 0.5 : 1) *
           (0.2 + Math.sqrt(this.bloomEnergy) * 0.8) *
-          (1 + pulse * 0.25);
+          (1 + pulse * 0.25) *
+          1.15;
         const turn = this.phase * 0.025 * (i % 2 ? -1 : 1);
         const unfurl = 0.2 + 0.8 * clamp(open / 0.75);
         const florets = 108;
@@ -925,7 +1069,7 @@ export class MixedChoreography {
             64,
             radius * (shell ? 0.2 : 0.32),
             0xc4a5ff,
-            alpha * (shell ? 0.12 : 0.08),
+            alpha * (shell ? 0.18 : 0.12),
             true,
           );
           if (halo)
@@ -1137,20 +1281,23 @@ export class MixedChoreography {
           }
       }
     const filamentGain = state.layers.filaments * strength;
-    const branches = Math.floor(
-      (living ? 0.65 + living.expansion * 0.35 : 1) *
-        (calm ? 6 : 18) *
-        q *
-        Math.sqrt(Math.max(this.levels[2], this.change)) *
-        (0.3 + this.energy * 0.7),
+    const branches = Math.floor((calm ? 6 : 18) * q);
+    const detail = clamp(
+      (0.18 + Math.sqrt(Math.max(this.levels[2], this.change)) * 0.82) *
+        (0.35 + fullness * 0.65) *
+        (living ? 0.7 + living.expansion * 0.3 : 1),
     );
     if (filamentGain > 0 && this.energy > 0.001)
       for (let n = 0; n < branches; n++) {
+        // Fixed candidates reveal smoothly instead of popping at integer counts.
+        const reveal = clamp(detail * branches - n);
+        const detailGain = reveal * reveal * (3 - 2 * reveal);
+        if (detailGain <= 0.001) continue;
         const bloom = living
           ? this.blooms[Math.floor(n / 3) % this.blooms.length]
           : bloomAt(n % regions);
         const releasing =
-          living && bloom && active && !state.reduced
+          bloom && active && !state.reduced
             ? clamp((time - bloom.time - 1900) / 900)
             : 0;
         const attached = n % 3 !== 0 || !bloom;
@@ -1188,14 +1335,15 @@ export class MixedChoreography {
               height * 0.01,
           ),
           width / (regions * 8),
-          height * (0.035 + this.levels[2] * 0.12 + this.change * 0.035),
+          height * (0.06 + this.levels[2] * 0.16 + this.change * 0.04),
         );
         const p = path(
           24,
           Math.max(0.6, height * 0.0009),
           0x6eb4ff,
           filamentGain *
-            (Math.sqrt(this.levels[2]) * 0.35 + this.change * 0.12),
+            detailGain *
+            (0.05 + Math.sqrt(this.levels[2]) * 0.4 + this.change * 0.12),
         );
         if (!p) continue;
         for (let j = 0; j < p.count; j++) {
@@ -1209,7 +1357,7 @@ export class MixedChoreography {
             12,
             Math.max(0.6, height * 0.0008),
             0x6eb4ff,
-            filamentGain * Math.sqrt(this.levels[2]) * 0.2,
+            filamentGain * detailGain * Math.sqrt(this.levels[2]) * 0.25,
           );
           if (fork)
             for (let j = 0; j < fork.count; j++) {
@@ -1234,11 +1382,48 @@ export class MixedChoreography {
               center.y + Math.sin(a) * (radius + reach * t),
               height * 0.0025,
               0xe3d1ff,
-              filamentGain * this.energy * Math.sin(t * Math.PI) * 0.4,
+              filamentGain *
+                detailGain *
+                this.energy *
+                Math.sin(t * Math.PI) *
+                0.4,
             );
           }
         }
       }
+    // A sparse, wide field of ribbon-related light dust provides scale without
+    // creating musical events. Blooms have already claimed their light budget.
+    if (active && !state.reduced && q > 0.6 && filamentGain > 0) {
+      const dust = Math.floor(48 * q);
+      for (let n = 0; n < dust; n++) {
+        const u = (n + 0.5) / dust;
+        const route = n % 3,
+          root = sample(route, u);
+        const drift = Math.sin(this.phase * 0.1 + n * 2.4);
+        const y =
+          root.y +
+          height * (hash(n + 810) - 0.5) * (0.22 + fullness * 0.28) +
+          drift * height * 0.015;
+        const visibility = clamp(detail * 1.4 - hash(n + 920));
+        const alpha =
+          visibility *
+          visibility *
+          this.energy *
+          filamentGain *
+          state.particles *
+          (calm ? 0.15 : 1) *
+          (0.25 + this.levels[2] * 0.35) *
+          (0.65 + 0.35 * Math.sin(n + this.phase * 0.22) ** 2);
+        if (y > height * 0.04 && y < height * 0.96)
+          light(
+            root.x,
+            y,
+            height * (0.0012 + hash(n + 300) * 0.0018),
+            n % 4 ? palette[route] : 0xe3d1ff,
+            alpha,
+          );
+      }
+    }
     return frame;
   }
 }

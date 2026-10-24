@@ -16,7 +16,7 @@ A fixed 64-sample ring stores energy, three frequency bands, centroid and flux a
 
 Blooms now appear as short musical events instead of persistent background structures. Three possible attachment regions span the panorama (two on narrow artwork), but there is at most **one primary bloom and one subtler secondary bloom**. Between events all flowers, their connecting stems and Piano accents disappear completely; ribbons carry quiet passages. Flower-associated filaments return to ribbon attachments when no flower is active.
 
-The primary retains the **30% reduced maximum radius**, bounded by artwork edges. Within that ceiling, measured energy and onset strength now create a much clearer range of sizes. The secondary is 65% of that size and approximately 50% of its brightness. The dimensional style remains: curved pedicels, six-lobed florets, faint rear detail, lavender body and pale foreground highlights. Halo width and intensity, center glow and tip-light density are reduced. No new assets, settings, renderer interfaces or audio protocol changes are needed.
+The primary retains the **30% reduced maximum radius**, bounded by artwork edges. Within that ceiling, measured energy and onset strength now create a much clearer range of sizes. The secondary is 65% of that size and approximately 50% of its brightness. The dimensional style remains: curved pedicels, six-lobed florets, faint rear detail, lavender body and pale foreground highlights. Halo width, center spread and tip-light density stay bounded; event luminosity follows measured energy. No new assets, settings, renderer interfaces or audio protocol changes are needed.
 
 At full quality the primary contains **54 florets** (6 rear / 18 body / 30 foreground), and the secondary contains **30** (0 / 12 / 18). Medium quality uses 3/12/24 and 0/9/15; low quality uses 0/9/18 and 0/6/12. Three florets share each pooled variable-width path; zero-width joins keep disconnected contours from drawing diagonal connections. Both WebGL and Canvas consume this same geometry.
 
@@ -60,6 +60,8 @@ Start the existing services in separate terminals:
 npm run audio
 npm run dev
 ```
+
+New Operator/display sessions start with **Show captions off**. Enable it explicitly when captions are needed; restoring settings and synchronization retain the selected value. Independent local Demo views keep their caption defaults.
 
 Open `http://localhost:5173/control`, explicitly select **MacBook Pro Microphone**, mono input **1**, sample rate **Auto**, then apply the settings and start Live. Select the venue display profile and open the performance display from the operator interface. Compare quiet gaps, normal speech, separated claps and music played through an external speaker. Watch the raw input meters and clipping indicators while adjusting sensitivity. Confirm the shapes react to the sound, Standby settles, and Live resumes without restarting capture. Check Reduced Motion, Calm Mode and individual layer strengths. After isolated claps, confirm each flower fully disappears within 2.8 seconds. During steady sound without new onsets or growth edges, confirm flowers stay absent after their event expires. Rhythmic music may create subsequent finite events, with one primary and at most one smaller, dimmer secondary.
 
@@ -141,3 +143,103 @@ ALLIUM_URL=http://127.0.0.1:5173 npm run visuals:compare -- \
 ```
 
 The recording is a local ignored artifact. To create another with your own input, follow [the feature-only recording steps](living-composition.md#capture-the-same-real-music-once). For a live visual check, run `npm run dev` and `npm run audio`, open `/control`, select Live, and retain your working input configuration. Try separated claps, speech, quiet music, stronger rhythmic music and silence. Check both choreography options: flowers should open on meaningful changes, pulse locally on later attacks, and fade rather than remain permanently open. Adjust the existing Transient blooms layer control as needed. No new capture trial was performed in this refinement; the software comparison reuses the confirmed music features. Physical 4416 × 896 LED readability, venue USB hardware and audience motion comfort remain to be verified on site.
+
+## Concert-scale composition — 24 October 2026
+
+Both **Current** and **Living Composition** now share a fuller scenic treatment. The three measured ribbon systems remain: magenta, sky and the quieter teal current. Individual strands fold, cross and reconverge within wider bundles; four translucent folded sheets add luminous mass without adding more primary systems. Six quieter distant contours and stronger previous-geometry trails create depth. Pale localized highlights reveal ribbon surfaces above the colored diffusion. These continuous highlights do not count as musical events.
+
+Scenic fullness combines the existing smoothed intensity (65%) and two-second energy follower (35%). Only active, unrestricted-motion input uses the slower component for spatial development; Reduced Motion and inactive input use the existing energy follower instead. This prevents slow-memory movement after silence and keeps constant Reduced Motion geometry stationary. Current remains the default direct response, while Living retains its additional focal convergence and build/release choreography.
+
+Fine filaments use fixed candidate locations with smooth alpha revelation instead of appearing abruptly when a count crosses an integer. A sparse field of at most 48 ribbon-related dust candidates spreads detail across the panorama; visibility follows measured energy and spectral detail. The existing Particles and Fine filaments controls govern it. Dust and travelling highlights stop immediately on inactive input and are absent in Reduced Motion. Calm Mode reduces detail and omits the translucent sheets. Stronger bloom luminosity and head halos preserve the reduced scale ceiling, simplified florets, onset thresholds, cooldowns, two-event limit and fixed expiry. Both modes can release supporting filaments from fading flowers toward nearby ribbons.
+
+All geometry is shared by WebGL and Canvas. Existing limits remain 256 paths, 160 points per path and 180 lights (60 in previews). Optional sheets, distant contours, travelling highlights and dust drop out at lower quality; primary strands, bloom identity and operator layer controls remain. Audio capture, analysis, feature transport, Demo, captions and session interfaces are unchanged.
+
+### Local verification
+
+With `npm run dev` and `npm run audio` running, open `/control`, choose Live and keep the working input selected. Open the stage display with the venue profile (4416 × 896). Compare **Current** and **Living Composition** using the same track, including quieter passages, a build, strong transients and a release. Check ribbon separation and crossings, localized pale highlights, event-driven flowers, a fuller high-energy field and quieter detail at low energy. Pause playback to verify that silence stops new musical events and spatial travel. Check the individual layer controls, Particles, Calm Mode and Reduced Motion; Demo and captions should retain their previous behavior.
+
+For a repeatable software comparison using the previously confirmed real-music features:
+
+```sh
+ALLIUM_URL=http://127.0.0.1:5173 npm run visuals:compare -- \
+  --input artifacts/verification/living-composition/measured-features.json \
+  --seconds 120 --output artifacts/verification/concert-after
+npm test
+npm run test:audio
+npm run test:browser
+npm run test:integration
+```
+
+The recording is an ignored local artifact, contains derived features only, and is never substituted into application Live input. The comparison harness is isolated from audio configuration. Physical LED brightness, viewing-distance readability and audience motion comfort require an on-site check; replay is not new microphone or USB hardware verification.
+
+Software checks for the concert-scale refinement: **69 unit tests, 46 Python audio tests, 17 browser regressions and 12 production Live integration tests passed (144 total)**. The integration command also completed the TypeScript/Vite production build. New tests cover wider depth geometry in both modes, progressive energy response, continuous detail revelation without zero-time jumps, particle/quality controls, and sustained peaks without exhausting path/light budgets or losing floral geometry. Existing silence, recovery, Reduced Motion, event lifetime, caption, Demo and synchronization checks continue to pass. Earlier tests that required every strand to remain separated were updated to allow intentional local crossings while requiring most strands to remain distinguishable; stale-event comparisons now sample the same musical timestamp.
+
+## Original Live choreography
+
+Choose **Live choreography → Original** in `/control` to use the Home page's original visual language with measured mixed audio. Current remains the default; Living Composition remains available. Selection synchronizes to operator previews and performance displays and survives settings export/restore. Switching does not restart capture. Older settings retain Current.
+
+Original reuses the Home page geometry: pink braided ribbons, angular sky-blue paths, yellow pressure rings, broad teal currents, lavender flower/diamond constellations and amber loops. These are visual families responding to one measured mix, not detected instruments. The Home page and Demo retain their existing instrument simulation.
+
+Low energy emphasizes currents and pressure strength; mids emphasize ribbons, blue paths and loops; highs reveal fine detail and light particles. Smoothed spectral centroid shifts contour height and flux adds bounded local deformation; neither is a recognized note. Accepted measured onsets (raw strength at least 0.30, at least 300 ms apart) create pressure events, blue attack details and finite lavender blooms. Rings and attack detail expire after 2.4 seconds and blooms after six seconds, retaining the original geometry's lifetimes. Sustained energy alone never creates flowers or a persistent bud.
+
+**Low currents** controls teal forms; **Mid flowing lines** controls pink/blue/amber forms; **High filaments** controls attack filaments and fine light particles; **Transient blooms** controls lavender events and yellow rings, including their local path deformation. All layers off clears the artwork. Calm Mode reduces motion and detail. Reduced Motion fixes primary contours and uses stationary fading event geometry, retaining intensity response through brightness. High Contrast renders white geometry. Missing/inactive input and Standby freeze procedural travel and release events within 600 ms; returning input clears stale gestures. Quiet passages retain faint structural lines.
+
+The existing WebGL and Canvas backends share the same geometry. Paths remain capped at 256 with 160 points each; Original uses Live's 180-light cap (60 in operator previews). Blooms are bounded by artwork edges. Adaptive quality reduces strand/flower detail before removing primary shape families. No audio service or protocol changes, assets or dependencies are added.
+
+The existing `visuals:compare` / `visuals:fixture` harness now includes Original alongside Current and Living Composition. Use a saved measured-feature timeline for matched musical comparisons; fixture results remain synthetic software checks. Native release archives and physical LED/audio rehearsal are separate from frontend verification.
+
+### Original verification — 24 October 2026
+
+The production build passed, together with 78 unit tests, 46 audio-service tests, 17 browser regressions and 12 production integration tests. A subsequent targeted browser check also passed Original selection synchronization and settings export/restore. Regression coverage includes stationary Reduced Motion ring/bloom geometry, independent high filaments, measured-only input, layer controls, event expiry, inactive-input release, switching, finite geometry and Live resource limits.
+
+A matched replay of the existing measured BlackHole feature timeline captured five musical timestamps per mode/backend and compared all three Live choreographies. Each timing run lasted **20 seconds** at **4416 × 896**, device scale factor 1. Original averaged **60.00 FPS** at full quality on WebGL and Canvas, with p95 frame intervals of **16.7 ms** and **16.8 ms**, respectively. Current measured **16.7 ms** on both, so Original stayed within the 10% p95 regression target. No page errors were reported. The report and timeline captures are in ignored `artifacts/verification/original/`.
+
+A fresh final capture pass after the Reduced Motion and independent-filament fixes inspected Home plus both backends at venue, preview and narrow sizes, including Reduced Motion and High Contrast, with no page errors. These captures are in ignored `artifacts/verification/original-final/`. Visual review found the six original families recognizable and the two rendering backends consistent. This verifies software behavior and local rendering; it is not a new microphone, mixer, physical LED or audience-comfort trial. Release archives were not rebuilt.
+
+## Combined Live choreography
+
+Choose **Live choreography → Combined** in `/control` for **Original's visuals with Current-style brightness and body**. All six Original families retain their composition: pink braided ribbons, angular sky-blue paths, yellow pressure rings, teal currents, lavender blooms/diamond constellations and amber loops. Current remains the default; Original and Living Composition remain available. Selection synchronizes to operator previews/display tabs and survives settings export/restore without restarting capture.
+
+Combined uses the same measured-audio controller and geometry as Original. Contour coordinates, positions, motion, bloom sizes, feature mapping and event lifetimes match Original; rings and attack detail expire after 2.4 seconds and blooms after six seconds. Current's ribbon systems, dimensional flowers and shorter bloom timing are not added. No Demo source or second audio simulation runs.
+
+The difference is light treatment. Combined uses the shared Original/Combined 120 ms attack / 800 ms release response and Current's perceptual luminosity curve (exponent 0.28) to increase luminosity, stroke body and existing soft glow in stronger passages, with a more restrained quiet response. Bright cores and diffusion retain Original's relative hierarchy. Glow/light centers stay in place; only brightness, stroke widths and halo sizes change.
+
+Original's four layer controls, Calm Mode, High Contrast, Reduced Motion, silence/Standby release within 600 ms and stale-gesture clearing remain shared. All layers off clears the artwork. Reduced Motion retains stationary point geometry while the light treatment responds to sound. The same 256-path, 160-point and 180-light limits apply (60 lights in previews), with no new geometry, assets or dependencies.
+
+The comparison harness includes all four options by default. To compare Current, Original and Combined against the same measured feature timeline:
+
+```sh
+ALLIUM_URL=http://127.0.0.1:5173 npm run visuals:compare -- \
+  --input artifacts/verification/living-composition/measured-features.json \
+  --variants current,original,combined --seconds 20 --output artifacts/verification/combined-original
+```
+
+`--variants` accepts unique comma-separated values from `current,living,original,combined`; it only selects developer comparison cases. Regression reports compare every selected non-Current variant with Current regardless of order. Runs without Current still capture/measure the selected options, report no baseline and omit regression ratios; single-option runs are supported.
+
+### Original and Combined sensitivity
+
+Both modes lift accepted intensity and frequency-band levels with `1 - (1 - x)^1.5` before smoothing. This increases quiet/moderate response smoothly and keeps the maximum at one. Visual attack is 120 ms (previously 180 ms), with the 800 ms release retained. Accepted onsets use a raw threshold of 0.30 instead of 0.45, then apply the same curve to event strength so soft attacks reveal blue details, yellow rings and lavender blooms. The 300 ms onset spacing, 2.4-second ring/attack and six-second bloom expiry remain unchanged. Original and Combined still share identical point geometry and motion for the same input; Combined retains its stronger light treatment.
+
+This tuning applies only to Original and Combined. Current, Living Composition, Demo, capture sensitivity, the noise threshold and the service's activity gate are unchanged. Inactive/missing input cannot create events, and Standby retains its existing release.
+
+### Final Combined and sensitivity verification — 24 October 2026
+
+The production build and **118 tests** passed: 89 unit, 17 browser and 12 production integration checks. New checks cover exact Original/Combined contour parity over changing sound, louder/thicker Combined light treatment and greater quiet-to-loud contrast, the faster quiet-input response, the 0.30 onset boundary and blue attack visibility, duplicate suppression, unchanged event expiry, silent-input gating, stationary Reduced Motion geometry, layer/budget limits, selection switching and comparison-report baseline behavior. Browser coverage verifies Combined synchronization and settings export/restore.
+
+Final matched captures replay a **20-second excerpt of the existing measured BlackHole feature timeline** (600 feature samples, no PCM), with five musical timestamps per mode/backend plus Reduced Motion, High Contrast, preview and narrow views. Timing runs last **10 seconds per mode/backend** at 4416 × 896 and device scale factor 1. Current, Original and Combined averaged **60.00 FPS** at full quality on both backends. Original p95 intervals were 16.8 ms WebGL / 16.7 ms Canvas; Combined measured 16.7 ms on both; Current measured 16.7 ms WebGL / 16.8 ms Canvas. All comparisons stayed within the 10% p95 target, with no page errors. These are short local software measurements rather than a venue soak or new hardware trial.
+
+Reports, excerpt and final captures are in ignored `artifacts/verification/sensitivity/`, with the final report at `final/comparison.json`. The prior Current-leading Combined was superseded; these final captures show Original's geometry with Combined's stronger light treatment and the shared increased sensitivity. Release archives were not rebuilt.
+
+### Clearer piano blooms in Original and Combined
+
+Piano visuals retain their existing flower radius, placement, silhouettes and six-second expiry, with a clearer lavender treatment. Petals use brighter opacity and thicker strokes, while diamond markers, stems and existing tip/core lights scale with artwork height for projection readability. Combined retains its additional light/body treatment; both modes still share point geometry. No path or light budgets are increased.
+
+At the default Motion value, accepted events open over approximately 180–320 ms according to onset strength. Lower Motion slows opening. Reduced Motion and zero Motion show fully formed stationary geometry with a short 120 ms brightness attack, followed by the existing fade. Stationary diamond layout uses the event's register detail at birth so falling spectral activity cannot rearrange the constellation.
+
+A bounded onset-strength brightness contribution keeps a brief accepted attack visible as ongoing energy falls. The Transient blooms control, Calm Mode reduction, six-second expiry and silence/Standby release within 600 ms still apply. Trigger sensitivity and spacing, flower counts, other visual families, Current, Living Composition and Demo remain unchanged.
+
+The production build and **121 tests** passed (92 unit, 17 browser, 12 production integration). Added checks cover early bloom visibility after a soft attack, continued visibility during falling energy, proportional marker sizing, unchanged normalized flower scale, zero-Motion stationary geometry and expiry. Existing checks retain Original/Combined parity, Reduced Motion, layer controls and shared geometry limits.
+
+Matched before/after isolated synthetic captures cover soft/strong attacks, venue, preview, narrow, Reduced Motion, zero Motion, High Contrast and Calm Mode on both backends: 32 captures per pass, with no page errors. At the tested short-attack venue frame, piano mean opacity increased about 1.8× and maximum stroke width about 2×. Faster opening makes the full existing flower scale readable sooner. These fixtures verify software appearance rather than instrument recognition or new microphone/venue behavior. Reports and captures are under ignored `artifacts/verification/piano-visibility/{before,after}/`. Release archives were not rebuilt.
+
+A separate measured-feature comparison replayed the saved 20-second excerpt through Current, Original and Combined on both backends, with **five-second timing runs** at 4416 × 896. Original measured 60.00 FPS on both; Combined measured 59.20 FPS WebGL / 60.00 FPS Canvas. All retained full quality, p95 frame intervals of 16.7–16.8 ms, no page errors and no regression beyond the 10% p95 target relative to Current. This is a short rendering smoke check, not a venue soak. Reports and matched measured-feature captures are under `artifacts/verification/piano-visibility/measured/`.

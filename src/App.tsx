@@ -844,7 +844,7 @@ function Control() {
                     onChange={(e) =>
                       concert.update({
                         liveChoreography: e.target.value as
-                          "current" | "living",
+                          "current" | "living" | "original" | "combined",
                       })
                     }
                   >
@@ -852,6 +852,8 @@ function Control() {
                     <option value="living">
                       Living Composition (Experimental)
                     </option>
+                    <option value="original">Original</option>
+                    <option value="combined">Combined</option>
                   </select>
                 </label>
                 {liveLayers.map((layer, index) => (

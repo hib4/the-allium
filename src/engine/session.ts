@@ -42,7 +42,7 @@ const initial = (): SessionState => ({
   intensity: 0.65,
   particles: 0.6,
   motion: 0.65,
-  captions: true,
+  captions: false,
   reduced:
     typeof matchMedia !== "undefined" &&
     matchMedia("(prefers-reduced-motion: reduce)").matches,
@@ -66,7 +66,9 @@ export function validState(v: unknown): v is SessionState {
   if (!v || typeof v !== "object") return false;
   const s = v as SessionState;
   return (
-    ["current", "living"].includes(s.liveChoreography) &&
+    ["current", "living", "original", "combined"].includes(
+      s.liveChoreography,
+    ) &&
     !!s.layers &&
     liveLayers.every(
       (k) =>

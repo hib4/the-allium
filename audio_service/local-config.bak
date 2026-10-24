@@ -1,7 +1,7 @@
 {
   "version": 2,
   "device": {
-    "name": "MacBook Pro Microphone",
+    "name": "USB Audio Device",
     "hostApi": "Core Audio"
   },
   "channels": [
