@@ -1,3 +1,4 @@
+import { displayProfiles, type DisplayProfile } from "./engine/display";
 import { useEffect, useState, type CSSProperties } from "react";
 import {
   BrowserRouter,
@@ -47,7 +48,23 @@ const layerLabels = {
   filaments: "High filaments",
   blooms: "Transient blooms",
 };
-function Calibration({ compact = false }: { compact?: boolean }) {
+function displayStyle(profile: DisplayProfile): CSSProperties | undefined {
+  const target = displayProfiles[profile].target;
+  return target
+    ? ({
+        "--display-width": target.width,
+        "--display-height": target.height,
+      } as CSSProperties)
+    : undefined;
+}
+function Calibration({
+  compact = false,
+  profile,
+}: {
+  compact?: boolean;
+  profile: DisplayProfile;
+}) {
+  const target = displayProfiles[profile].target;
   const [size, setSize] = useState("");
   useEffect(() => {
     const update = () =>
@@ -92,7 +109,10 @@ function Calibration({ compact = false }: { compact?: boolean }) {
       <span className="calibration-bl">BOTTOM LEFT</span>
       <span className="calibration-br">BOTTOM RIGHT</span>
       <strong>
-        Target 4416 × 896 · 69:14{!compact && ` · Viewport ${size}`}
+        {target
+          ? `Target ${target.width} × ${target.height} · ${target.ratio}`
+          : "Responsive"}
+        {!compact && ` · Viewport ${size}`}
       </strong>
     </div>
   );
@@ -300,7 +320,12 @@ function Experience() {
   };
   return (
     <div
-      className={`experience ${performance ? "performance" : ""} ${state.displayProfile === "venue" ? "venue-display" : ""}`}
+      className={`experience ${performance ? "performance" : ""} ${displayProfiles[state.displayProfile].target ? "venue-display" : ""}`}
+      data-display-profile={state.displayProfile}
+      data-live-choreography={
+        state.mode === "demo" ? undefined : state.liveChoreography
+      }
+      style={displayStyle(state.displayProfile)}
     >
       {!performance && <Header />}
       <main id="main" className="experience-main">
@@ -327,7 +352,7 @@ function Experience() {
           </div>
           <Score session={concert} />
           <Captions session={concert} />
-          {state.calibration && <Calibration />}
+          {state.calibration && <Calibration profile={state.displayProfile} />}
         </div>
         {!performance && (
           <div className="rehearsal">
@@ -899,11 +924,14 @@ function Control() {
             <section className="preview-desk">
               <h2>Display preview</h2>
               <div
-                className={`operator-preview ${state.displayProfile === "venue" ? "venue-preview" : ""}`}
+                className={`operator-preview ${displayProfiles[state.displayProfile].target ? "venue-preview" : ""}`}
+                style={displayStyle(state.displayProfile)}
               >
                 <Score session={concert} profile="preview" />
                 <Captions session={concert} compact />
-                {state.calibration && <Calibration compact />}
+                {state.calibration && (
+                  <Calibration compact profile={state.displayProfile} />
+                )}
               </div>
               <p className="panel-note">
                 {state.mode === "demo"
@@ -921,12 +949,15 @@ function Control() {
                   disabled={status.locked}
                   onChange={(e) =>
                     concert.update({
-                      displayProfile: e.target.value as "responsive" | "venue",
+                      displayProfile: e.target.value as DisplayProfile,
                     })
                   }
                 >
-                  <option value="responsive">Responsive · fill display</option>
-                  <option value="venue">Venue LED · 4416 × 896</option>
+                  {Object.entries(displayProfiles).map(([value, profile]) => (
+                    <option key={value} value={value}>
+                      {profile.label}
+                    </option>
+                  ))}
                 </select>
               </label>
               <Toggle

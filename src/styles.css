@@ -325,6 +325,66 @@ button svg,
   width: 100%;
   height: 100%;
 }
+.score-instrument-guide {
+  position: absolute;
+  z-index: 1;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 5px 14px;
+  max-width: min(520px, calc(100% - 24px));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--white);
+  font-size: 15px;
+  font-weight: 500;
+  line-height: 1.3;
+  pointer-events: none;
+}
+.score-instrument-guide li {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.score-instrument-guide-glyph {
+  display: inline-flex;
+}
+.score-instrument-guide .instrument-glyph {
+  width: 20px;
+  height: 15px;
+  flex: none;
+}
+.score[data-profile="preview"] .score-instrument-guide {
+  top: 4px;
+  right: 8px;
+  max-width: min(520px, calc(100% - 16px));
+  font-size: 11px;
+  line-height: 1.2;
+  gap: 3px 8px;
+}
+.score[data-profile="preview"] .score-instrument-guide .instrument-glyph {
+  width: 18px;
+  height: 13px;
+}
+.performance .score-instrument-guide {
+  max-width: min(520px, calc(100% - 170px));
+}
+@media (max-width: 480px) {
+  .score-instrument-guide {
+    gap: 4px 8px;
+    font-size: 13px;
+  }
+  .performance .score-instrument-guide {
+    top: 8px;
+    right: 8px;
+    max-width: calc(100% - 170px);
+  }
+}
 .score-fallback {
   position: absolute;
   inset: 0;
@@ -2059,15 +2119,21 @@ textarea {
 }
 .performance.venue-display .stage {
   flex: none;
-  width: min(100vw, calc(100dvh * 69 / 14));
-  height: min(100dvh, calc(100vw * 14 / 69));
-  aspect-ratio: 69 / 14;
+  width: min(
+    100vw,
+    calc(100dvh * var(--display-width) / var(--display-height))
+  );
+  height: min(
+    100dvh,
+    calc(100vw * var(--display-height) / var(--display-width))
+  );
+  aspect-ratio: var(--display-width) / var(--display-height);
 }
 .operator-preview {
   position: relative;
 }
 .operator-preview.venue-preview {
-  aspect-ratio: 69 / 14;
+  aspect-ratio: var(--display-width) / var(--display-height);
   min-height: 0;
   overflow: hidden;
   container-type: inline-size;
@@ -2149,4 +2215,33 @@ textarea {
 .choreography-select select {
   width: 100%;
   min-width: 0;
+}
+
+/* Larger stage identity for the two instrument-based Live choreographies. */
+.experience:is(
+    [data-live-choreography="original"],
+    [data-live-choreography="combined"]
+  )
+  .stage-top
+  .identity {
+  font-size: 32px;
+}
+.experience:is(
+    [data-live-choreography="original"],
+    [data-live-choreography="combined"]
+  )
+  .stage-top
+  .identity
+  > span:first-child {
+  font-size: 12px;
+}
+@media (min-aspect-ratio: 4/1) {
+  .performance:is(
+      [data-live-choreography="original"],
+      [data-live-choreography="combined"]
+    )
+    .stage-top
+    .identity {
+    font-size: clamp(28px, 5vh, 42px);
+  }
 }

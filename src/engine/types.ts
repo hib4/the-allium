@@ -1,3 +1,4 @@
+import type { DisplayProfile } from "./display";
 export const instruments = [
   "vocals",
   "guitar",
@@ -57,7 +58,7 @@ export const defaultLayers = (): Record<LiveLayer, number> => ({
 export interface SessionState {
   liveChoreography: "current" | "living" | "original" | "combined";
   layers: Record<LiveLayer, number>;
-  displayProfile: "responsive" | "venue";
+  displayProfile: DisplayProfile;
   calibration: boolean;
   mode: "demo" | "live" | "standby";
   playing: boolean;

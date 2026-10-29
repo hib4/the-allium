@@ -65,6 +65,7 @@ interface Chord {
   intensity: number;
   pitches: number[];
   visualNotes?: number;
+  region?: number;
   section: Section;
 }
 interface Attack {
@@ -87,14 +88,14 @@ class History {
   levels = new Float32Array(LIMITS.history);
   cursor = 0;
   size = 0;
-  add(pitch: number, level: number) {
+  add(pitch: number, level: number, smoothingMs = 180, sampleMs = 1000 / 30) {
     const previous = this.size
       ? this.values[(this.cursor - 1 + LIMITS.history) % LIMITS.history]
       : pitch;
     this.values[this.cursor] = mix(
       previous,
       pitch,
-      1 - Math.exp(-(1000 / 30) / 180),
+      1 - Math.exp(-sampleMs / smoothingMs),
     );
     this.levels[this.cursor] = level;
     this.cursor = (this.cursor + 1) % LIMITS.history;
@@ -184,11 +185,23 @@ export class Choreography {
   private inactiveSince = -1;
   private eventRelease = 1;
   private detailStrength = 1;
+  private guitarPaths: Stroke[] = [];
+  private guitarLights: Light[] = [];
+  private pianoUse = [-Infinity, -Infinity, -Infinity];
+  private pianoLastRegion = -1;
+  private pianoEventIndex = 0;
   constructor(private source: MusicSource = new DemoSource()) {}
   get metrics() {
     return {
       pressures: this.pressures.length,
       chords: this.chords.length,
+      pianoEvents: this.chords.map(({ time, x, y, region, intensity }) => ({
+        time,
+        x,
+        y,
+        region,
+        intensity,
+      })),
       history: this.histories.vocals.size,
       particles: this.frame.lightCount,
       paths: this.frame.pathCount,
@@ -363,6 +376,7 @@ export class Choreography {
       this.measuredClock = 0;
       this.measuredSample = -1;
       this.measuredOnset = -Infinity;
+      this.resetPianoPlacement();
       this.inactiveSince = -1;
       this.energy = this.phase = this.bassPhase = this.detailStrength = 0;
       for (const i of instruments) {
@@ -397,25 +411,39 @@ export class Choreography {
       piano: 65,
       saxophone: 67,
     };
+    const verticalTracking = !state.reduced && state.motion > 0;
+    const verticalScale =
+      clamp(state.motion / 0.65) * (state.scene === "Calm Mode" ? 0.18 : 1);
+    const verticalSmoothing = 90 / Math.max(0.1, verticalScale);
     for (const i of instruments) {
       const level = active
         ? clamp(inputEnergy * 0.35 + registers[i] * 0.65)
         : 0;
-      this.weights[i] = follow(
-        this.weights[i],
-        active ? 0.12 + Math.pow(level, 0.6) * 0.88 : 0.04,
-      );
+      const weightTarget = active ? 0.12 + Math.pow(level, 0.6) * 0.88 : 0.04;
+      this.weights[i] =
+        (i === "drums" || i === "piano") && weightTarget > this.weights[i]
+          ? mix(this.weights[i], weightTarget, 1 - Math.exp(-dt / 90))
+          : follow(this.weights[i], weightTarget);
       // Reduced Motion fixes the contours while their opacity follows the music.
       this.levels[i] = state.reduced ? 0.4 : follow(this.levels[i], level);
+      const targetPitch =
+        refs[i] +
+        (active
+          ? (clamp(f!.centroid / 12000) - 0.25) * 24 + clamp(f!.flux) * 3
+          : 0);
       this.pitch[i] = state.reduced
         ? refs[i]
-        : follow(
-            this.pitch[i],
-            refs[i] +
-              (active
-                ? (clamp(f!.centroid / 12000) - 0.25) * 24 + clamp(f!.flux) * 3
-                : 0),
-          );
+        : verticalTracking &&
+            (i === "vocals" ||
+              i === "guitar" ||
+              i === "bass" ||
+              i === "saxophone")
+          ? mix(
+              this.pitch[i],
+              targetPitch,
+              1 - Math.exp(-dt / verticalSmoothing),
+            )
+          : follow(this.pitch[i], targetPitch);
       this.brightness[i] = state.reduced
         ? 0.2
         : follow(this.brightness[i] ?? 0, high);
@@ -428,6 +456,7 @@ export class Choreography {
         this.pressures = [];
         this.chords = [];
         this.attacks = [];
+        this.resetPianoPlacement();
         for (const i of instruments) this.histories[i].reset();
         this.measuredSample = -1;
       }
@@ -441,8 +470,26 @@ export class Choreography {
         this.measuredSample < 0 ||
         this.measuredClock - this.measuredSample >= 1000 / 30
       ) {
-        for (const i of instruments)
-          this.histories[i].add(this.pitch[i], this.levels[i]);
+        const sampleMs =
+          this.measuredSample < 0
+            ? 1000 / 30
+            : this.measuredClock - this.measuredSample;
+        for (const i of instruments) {
+          if (
+            verticalTracking &&
+            (i === "vocals" ||
+              i === "guitar" ||
+              i === "bass" ||
+              i === "saxophone")
+          )
+            this.histories[i].add(
+              this.pitch[i],
+              this.levels[i],
+              verticalSmoothing,
+              sampleMs,
+            );
+          else this.histories[i].add(this.pitch[i], this.levels[i]);
+        }
         this.measuredSample = this.measuredClock;
       }
       for (const event of input!.events) {
@@ -462,7 +509,7 @@ export class Choreography {
           {
             instrument: "drums",
             timestamp,
-            intensity: intensity * (0.4 + low * 0.6),
+            intensity: clamp(intensity * 1.25) * (0.4 + low * 0.6),
             articulation: low >= high ? "kick" : "hat",
           },
           state,
@@ -481,7 +528,7 @@ export class Choreography {
           {
             instrument: "piano",
             timestamp,
-            intensity,
+            intensity: clamp(intensity * 1.25),
             pitch: this.pitch.piano,
           },
           state,
@@ -509,6 +556,7 @@ export class Choreography {
   private geometry(time: number, quality: number, calm: boolean): ScoreFrame {
     this.frame.pathCount = 0;
     this.frame.lightCount = 0;
+    this.guitarPaths.length = this.guitarLights.length = 0;
     this.frame.energy = this.energy;
     this.frame.time = time;
     this.bass();
@@ -519,7 +567,52 @@ export class Choreography {
     this.percussion(time);
     this.filaments(time);
     this.particles(time, quality, calm);
+    if (this.measured) {
+      const centerY = this.height * 0.5;
+      for (const path of this.guitarPaths) {
+        for (let j = 0; j < path.count; j++) {
+          path.points[j * 2 + 1] =
+            centerY + (path.points[j * 2 + 1] - centerY) * 0.9;
+        }
+        path.width *= 0.9;
+      }
+      for (const light of this.guitarLights) {
+        light.y = centerY + (light.y - centerY) * 0.9;
+        light.size *= 0.9;
+      }
+    }
     return this.frame;
+  }
+  private resetPianoPlacement() {
+    this.pianoUse.fill(-Infinity);
+    this.pianoLastRegion = -1;
+    this.pianoEventIndex = 0;
+  }
+  private pianoAnchor(time: number) {
+    const anchors =
+      this.width / this.height >= 1.8 ? [0.18, 0.5, 0.82] : [0.28, 0.72];
+    const retained = this.chords.filter((c) => time - c.time < 6000).slice(-3);
+    const candidates = anchors.map((_, region) => ({
+      region,
+      count: retained.filter((c) => c.region === region).length,
+      used: this.pianoUse[region],
+    }));
+    candidates.sort(
+      (a, b) =>
+        a.count - b.count ||
+        (a.used === b.used ? a.region - b.region : a.used - b.used),
+    );
+    const region = candidates.find(
+      (c) => c.region !== this.pianoLastRegion,
+    )!.region;
+    const seed = this.pianoEventIndex++;
+    this.pianoUse[region] = time;
+    this.pianoLastRegion = region;
+    return {
+      region,
+      x: anchors[region] + (hash(seed + 122) - 0.5) * 0.04,
+      y: 0.34 + hash(seed + 51) * 0.2,
+    };
   }
   private consume(e: MusicEvent, s: SessionState) {
     const n = e.beat ?? e.timestamp / 625;
@@ -536,11 +629,16 @@ export class Choreography {
       if (last && Math.abs(last.time - e.timestamp) < 40) {
         last.pitches.push(e.pitch ?? 60);
         last.pitches = last.pitches.slice(0, 8);
-      } else
+      } else {
+        const anchor = this.measured
+          ? this.pianoAnchor(e.timestamp)
+          : {
+              x: 0.55 + hash(Math.floor(n / 8)) * 0.22,
+              y: 0.37 + hash(n + 8) * 0.13,
+            };
         this.chords.push({
           time: e.timestamp,
-          x: 0.55 + hash(Math.floor(n / 8)) * 0.22,
-          y: 0.37 + hash(n + 8) * 0.13,
+          ...anchor,
           intensity: e.intensity,
           pitches: [e.pitch ?? 60],
           visualNotes: this.measured
@@ -554,6 +652,7 @@ export class Choreography {
             : undefined,
           section: s.section,
         });
+      }
     }
     if (e.instrument === "guitar" && e.onset && e.intensity > 0.4)
       this.attacks.push({
@@ -602,6 +701,8 @@ export class Choreography {
     p.color = this.options.highContrast ? 0xffffff : color;
     p.alpha = clamp(alpha * luminosity);
     p.soft = soft && !this.options.highContrast;
+    // Track the source color even when High Contrast replaces the render color.
+    if (this.measured && color === palette.guitar) this.guitarPaths.push(p);
     return p;
   }
   private light(
@@ -640,6 +741,7 @@ export class Choreography {
             : 1),
       ),
     });
+    if (this.measured && color === palette.guitar) this.guitarLights.push(p);
   }
   private strength(i: Instrument) {
     return (
@@ -701,9 +803,12 @@ export class Choreography {
       const soft = k >= 2;
       const p = this.path(
         128,
-        ((soft ? 14 + k * 8 : 1.5) * h) / 550,
+        (((soft ? 14 + k * 8 : 1.5) * h) / 550) *
+          (this.measured && !soft ? 1.4 : 1),
         palette.bass,
-        strength * (soft ? 0.14 : 0.75),
+        strength *
+          (soft ? 0.14 : 0.75) *
+          (this.measured ? (soft ? 1.6 : 1.8) : 1),
         soft,
       );
       if (!p) continue;
@@ -720,7 +825,28 @@ export class Choreography {
           Math.sin(u * Math.PI * 3.5 - this.bassPhase) * h * 0.016 +
           k * h * 0.014;
         p.points[j * 2] = x;
-        p.points[j * 2 + 1] = y + this.displacement(x, y) * 0.65;
+        if (this.measured && !this.state.reduced && this.state.motion > 0) {
+          const gain =
+            1 +
+            0.5 *
+              clamp(this.state.motion / 0.65) *
+              (this.state.scene === "Calm Mode" ? 0.18 : 1);
+          const dynamic =
+            -pitch * h * 0.035 +
+            Math.sin(u * Math.PI * 2 + this.bassPhase) * level * 0.045 * h;
+          const rest = y - dynamic;
+          const delta =
+            dynamic * gain + this.displacement(x, rest + dynamic * gain) * 0.65;
+          const room = Math.max(
+            1,
+            delta < 0 ? rest - h * 0.62 : h * 0.98 - rest,
+          );
+          p.points[j * 2 + 1] = clamp(
+            rest + room * Math.tanh(delta / room),
+            h * 0.62,
+            h * 0.98,
+          );
+        } else p.points[j * 2 + 1] = y + this.displacement(x, y) * 0.65;
       }
     }
   }
@@ -737,6 +863,13 @@ export class Choreography {
     const ref = voice ? 65 : 72;
     const level = this.levels[i];
     const density = this.state.scene === "Calm Mode" ? 0.5 : 1;
+    const verticalTracking =
+      this.measured && !this.state.reduced && this.state.motion > 0;
+    const verticalGain =
+      1 +
+      0.5 *
+        clamp(this.state.motion / 0.65) *
+        (this.state.scene === "Calm Mode" ? 0.18 : 1);
     for (let k = layers - 1; k >= 0; k--) {
       const soft = k >= layers - 3;
       const width = soft
@@ -801,7 +934,25 @@ export class Choreography {
             this.levels.bass *
             this.weights.bass;
         p.points[j * 2] = x;
-        p.points[j * 2 + 1] = y + this.displacement(x, y);
+        if (verticalTracking) {
+          // Amplify only the sound-driven vertical component. Ease into available
+          // headroom instead of clipping the primary contours at the artwork edge.
+          const vertical = -pitch * h * (voice ? 0.19 : 0.14);
+          const rest = y - vertical;
+          const delta =
+            vertical * verticalGain +
+            this.displacement(x, rest + vertical * verticalGain);
+          const margin = h * 0.1;
+          const headroom = Math.max(
+            1,
+            delta < 0 ? rest - margin : h - margin - rest,
+          );
+          p.points[j * 2 + 1] = clamp(
+            rest + headroom * Math.tanh(delta / headroom),
+            margin,
+            h - margin,
+          );
+        } else p.points[j * 2 + 1] = y + this.displacement(x, y);
       }
     }
   }
@@ -835,7 +986,26 @@ export class Choreography {
             k * 0.004) *
           this.height;
         p.points[j * 2] = x;
-        p.points[j * 2 + 1] = y + this.displacement(x, y);
+        if (this.measured && !this.state.reduced && this.state.motion > 0) {
+          const gain =
+            1 +
+            0.5 *
+              clamp(this.state.motion / 0.65) *
+              (this.state.scene === "Calm Mode" ? 0.18 : 1);
+          const dynamic = -clamp((pitch - 67) / 17, -1, 1) * 0.16 * this.height;
+          const rest = y - dynamic;
+          const delta =
+            dynamic * gain + this.displacement(x, rest + dynamic * gain);
+          const room = Math.max(
+            1,
+            delta < 0 ? rest - this.height * 0.1 : this.height * 0.9 - rest,
+          );
+          p.points[j * 2 + 1] = clamp(
+            rest + room * Math.tanh(delta / room),
+            this.height * 0.1,
+            this.height * 0.9,
+          );
+        } else p.points[j * 2 + 1] = y + this.displacement(x, y);
       }
     }
   }
@@ -870,7 +1040,8 @@ export class Choreography {
       const stationary =
         this.state.reduced || (this.measured && this.state.motion === 0);
       const openingMs =
-        (320 - chord.intensity * 140) *
+        ((this.measured ? 240 : 320) -
+          chord.intensity * (this.measured ? 100 : 140)) *
         (0.65 / Math.max(0.1, this.state.motion));
       const opening = 1 - Math.pow(1 - clamp((age * 1000) / openingMs), 3);
       const unfurl = stationary
@@ -878,7 +1049,7 @@ export class Choreography {
         : this.measured
           ? opening
           : 1 - Math.exp(-age * 1.8 * this.state.motion);
-      const attackAlpha = this.measured ? clamp((age * 1000) / 120) : 1;
+      const attackAlpha = this.measured ? clamp((age * 1000) / 90) : 1;
       const eventFloor =
         chord.intensity *
         0.65 *
@@ -900,6 +1071,7 @@ export class Choreography {
         (0.35 + chord.intensity * 0.65) *
         (this.state.scene === "Calm Mode" ? 0.5 : 1);
       if (this.measured) {
+        radius *= 1.15;
         const aspect = Math.min(2.1, Math.max(1, w / h / 3));
         radius = Math.min(
           radius,
@@ -1060,7 +1232,7 @@ export class Choreography {
       const kick = pressure.kind === "kick",
         hat = pressure.kind === "hat";
       const expansion = this.state.reduced ? 0 : age * 0.2 * this.state.motion;
-      const radius =
+      let radius =
         h *
         ((kick ? 0.065 : hat ? 0.014 : 0.035) + expansion) *
         (this.state.mode === "demo"
@@ -1068,6 +1240,11 @@ export class Choreography {
           : 0.65 + 0.35 * Math.sqrt(pressure.intensity));
       const x = pressure.x * w,
         y = pressure.y * h;
+      if (this.measured)
+        radius = Math.min(
+          radius * 1.25,
+          Math.max(0, Math.min(x, w - x, y, h - y) - h * 0.04),
+        );
       const attackVisibility =
         this.state.mode === "demo"
           ? pressure.intensity

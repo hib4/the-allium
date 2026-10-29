@@ -695,3 +695,282 @@ test("Live choreographies synchronize and return immediately without restarting 
   ).toHaveCount(0);
   await expect(display.locator("canvas")).toBeVisible();
 });
+
+test("small instrument guides follow Original and Combined and fit display and preview artwork", async ({
+  page,
+  context,
+}) => {
+  await page.goto("/control");
+  await page.getByRole("button", { name: "Live", exact: true }).click();
+  const selector = page.getByLabel("Live choreography", { exact: true });
+  const display = await context.newPage();
+  await display.goto("/experience?performance=1");
+  const guide = display.getByRole("list", { name: "Instrument visual guide" });
+  const preview = page.locator(".operator-preview");
+  const previewGuide = preview.getByRole("list", {
+    name: "Instrument visual guide",
+  });
+  const names = ["Vocals", "Guitar", "Drums", "Bass", "Piano"];
+  const fits = async () => {
+    const measurements = await guide.evaluate((el) => {
+      const score = el.closest(".score")!.getBoundingClientRect();
+      const identity = document
+        .querySelector(".stage-top .identity")!
+        .getBoundingClientRect();
+      const style = getComputedStyle(el);
+      return {
+        pointerEvents: style.pointerEvents,
+        fontSize: parseFloat(style.fontSize),
+        items: [...el.children].map((li) => {
+          const r = li.getBoundingClientRect();
+          return {
+            inside:
+              r.left >= score.left &&
+              r.right <= score.right + 1 &&
+              r.top >= score.top &&
+              r.bottom <= score.bottom + 1,
+            clearIdentity:
+              r.right <= identity.left ||
+              r.left >= identity.right ||
+              r.bottom <= identity.top ||
+              r.top >= identity.bottom,
+          };
+        }),
+      };
+    });
+    expect(measurements.pointerEvents).toBe("none");
+    expect(measurements.fontSize).toBeLessThanOrEqual(15);
+    expect(measurements.items.every((i) => i.inside && i.clearIdentity)).toBe(
+      true,
+    );
+  };
+  await expect(guide).toHaveCount(0);
+  for (const variant of ["original", "combined"]) {
+    await selector.selectOption(variant);
+    await expect(guide.locator("li")).toHaveText(names);
+    await expect(previewGuide.locator("li")).toHaveText(names);
+    expect(
+      await previewGuide.evaluate((el) => getComputedStyle(el).fontSize),
+    ).toBe("11px");
+    for (const [width, height] of [
+      [4416, 896],
+      [1920, 1080],
+      [320, 800],
+    ]) {
+      await display.setViewportSize({ width, height });
+      expect(
+        await display
+          .locator(".stage-top .identity")
+          .evaluate((el) => parseFloat(getComputedStyle(el).fontSize)),
+      ).toBe(width === 4416 ? 42 : 32);
+      for (const captions of [false, true]) {
+        await page
+          .getByLabel("Show captions", { exact: true })
+          .setChecked(captions);
+        await fits();
+        await display.screenshot({
+          path: `.impeccable/review/instrument-guide-${variant}-${width}-${captions ? "captions" : "art"}.png`,
+        });
+      }
+    }
+    await preview.screenshot({
+      path: `.impeccable/review/instrument-guide-${variant}-preview.png`,
+    });
+    await page.setViewportSize({ width: 320, height: 800 });
+    const previewFits = await previewGuide.evaluate((el) => {
+      const score = el.closest(".score")!.getBoundingClientRect();
+      return [...el.children].every((li) => {
+        const r = li.getBoundingClientRect();
+        return (
+          r.left >= score.left &&
+          r.right <= score.right + 1 &&
+          r.top >= score.top &&
+          r.bottom <= score.bottom + 1
+        );
+      });
+    });
+    expect(previewFits).toBe(true);
+    await preview.screenshot({
+      path: `.impeccable/review/instrument-guide-${variant}-preview-mobile.png`,
+    });
+    await page.setViewportSize({ width: 1280, height: 720 });
+    await display.goto("/experience");
+    await fits();
+    await display.screenshot({
+      path: `.impeccable/review/instrument-guide-${variant}-experience-mobile.png`,
+      fullPage: true,
+    });
+    await display.goto("/experience?performance=1");
+    await display.setViewportSize({ width: 4416, height: 896 });
+    await page
+      .getByLabel("Display profile", { exact: true })
+      .selectOption("venue");
+    await fits();
+    await display.screenshot({
+      path: `.impeccable/review/instrument-guide-${variant}-venue.png`,
+    });
+    await page
+      .getByLabel("Display profile", { exact: true })
+      .selectOption("responsive");
+  }
+  await page.getByRole("button", { name: "Standby", exact: true }).click();
+  await expect(guide.locator("li")).toHaveText(names);
+  await selector.selectOption("current");
+  await expect(guide).toHaveCount(0);
+  await selector.selectOption("living");
+  await expect(guide).toHaveCount(0);
+  await selector.selectOption("combined");
+  await expect(guide).toBeVisible();
+  await page.getByRole("button", { name: "Demo", exact: true }).click();
+  await expect(guide).toHaveCount(0);
+});
+
+for (const renderer of ["webgl", "canvas"]) {
+  test(`2424 display profile sizes, calibrates, synchronizes and restores using ${renderer}`, async ({
+    page,
+    context,
+  }) => {
+    await page.goto("/control");
+    await page.getByRole("button", { name: "Live", exact: true }).click();
+    const profile = page.getByLabel("Display profile", { exact: true });
+    await profile.selectOption({ label: "Venue LED · 2424 × 896" });
+    const display = await context.newPage();
+    await display.setViewportSize({ width: 2424, height: 896 });
+    await display.goto(
+      `/experience?performance=1${renderer === "canvas" ? "&renderer=canvas" : ""}`,
+    );
+    await expect(display.locator(".experience")).toHaveAttribute(
+      "data-display-profile",
+      "venue-2424",
+    );
+    await expect(display.locator(".score-renderer")).toHaveAttribute(
+      "data-renderer",
+      renderer,
+    );
+    const stage = display.locator(".stage");
+    const checkRatio = async () => {
+      const r = (await stage.boundingBox())!;
+      expect(r.width / r.height).toBeCloseTo(2424 / 896, 3);
+      return r;
+    };
+    for (const variant of ["original", "combined"]) {
+      await page
+        .getByLabel("Live choreography", { exact: true })
+        .selectOption(variant);
+      await expect(
+        display.getByRole("list", { name: "Instrument visual guide" }),
+      ).toBeVisible();
+      for (const captions of [false, true]) {
+        await page
+          .getByLabel("Show captions", { exact: true })
+          .setChecked(captions);
+        const r = await checkRatio();
+        expect(r.width).toBe(2424);
+        expect(r.height).toBe(896);
+        if (captions) await expect(display.locator(".captions")).toBeVisible();
+        else await expect(display.locator(".captions")).toHaveCount(0);
+        expect(
+          await display.evaluate(
+            () =>
+              document.documentElement.scrollWidth === 2424 &&
+              document.documentElement.scrollHeight === 896,
+          ),
+        ).toBe(true);
+        await display.screenshot({
+          path: `.impeccable/review/profile-2424-${renderer}-${variant}-${captions ? "captions" : "art"}.png`,
+        });
+      }
+    }
+    await page.getByLabel("Display calibration", { exact: true }).check();
+    await expect(display.locator(".calibration strong")).toContainText(
+      "Target 2424 × 896 · 303:112",
+    );
+    await expect(
+      page.locator(".operator-preview .calibration strong"),
+    ).toContainText("Target 2424 × 896 · 303:112");
+    for (const circle of await display.locator(".calibration circle").all()) {
+      const r = (await circle.boundingBox())!;
+      expect(Math.abs(r.width - r.height)).toBeLessThan(0.1);
+    }
+    await display.screenshot({
+      path: `.impeccable/review/profile-2424-${renderer}-calibration.png`,
+    });
+    await display.setViewportSize({ width: 1920, height: 1080 });
+    const contained = await checkRatio();
+    expect(contained.width).toBeLessThanOrEqual(1920);
+    expect(contained.height).toBeLessThanOrEqual(1080);
+    await expect(display.locator(".calibration strong")).toContainText(
+      "Viewport 1920 × 1080",
+    );
+    await display.screenshot({
+      path: `.impeccable/review/profile-2424-${renderer}-contained.png`,
+    });
+    await page.getByLabel("Display calibration", { exact: true }).uncheck();
+    for (const width of [1280, 320]) {
+      await page.setViewportSize({ width, height: 800 });
+      const preview = page.locator(".operator-preview");
+      const r = (await preview.boundingBox())!;
+      expect(r.width / r.height).toBeCloseTo(2424 / 896, 1);
+      expect(
+        await preview
+          .getByRole("list", { name: "Instrument visual guide" })
+          .evaluate((el) => {
+            const score = el.closest(".score")!.getBoundingClientRect();
+            return [...el.children].every((li) => {
+              const r = li.getBoundingClientRect();
+              return (
+                r.left >= score.left &&
+                r.right <= score.right + 1 &&
+                r.top >= score.top &&
+                r.bottom <= score.bottom + 1
+              );
+            });
+          }),
+      ).toBe(true);
+      await preview.screenshot({
+        path: `.impeccable/review/profile-2424-${renderer}-preview-${width}.png`,
+      });
+    }
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page
+      .getByText("Settings backup and troubleshooting", { exact: true })
+      .click();
+    const pending = page.waitForEvent("download");
+    await page
+      .getByRole("button", { name: "Export settings", exact: true })
+      .click();
+    const file = await (await pending).path();
+    if (!file) throw Error("Missing profile settings export");
+    await profile.selectOption("responsive");
+    await expect(display.locator(".experience")).toHaveAttribute(
+      "data-display-profile",
+      "responsive",
+    );
+    await page.getByLabel("Display calibration", { exact: true }).check();
+    await expect(display.locator(".calibration strong")).toContainText(
+      "Responsive · Viewport 1920 × 1080",
+    );
+    await page.getByLabel("Restore settings").setInputFiles(file);
+    await expect(profile).toHaveValue("venue-2424");
+    await expect(display.locator(".experience")).toHaveAttribute(
+      "data-display-profile",
+      "venue-2424",
+    );
+    await checkRatio();
+    await profile.selectOption("venue");
+    await expect(display.locator(".experience")).toHaveAttribute(
+      "data-display-profile",
+      "venue",
+    );
+    const legacy = (await stage.boundingBox())!;
+    expect(legacy.width / legacy.height).toBeCloseTo(69 / 14, 3);
+    await profile.selectOption("responsive");
+    await expect(display.locator(".experience")).toHaveAttribute(
+      "data-display-profile",
+      "responsive",
+    );
+    const responsive = (await stage.boundingBox())!;
+    expect(responsive.width).toBe(1920);
+    expect(responsive.height).toBe(1080);
+  });
+}

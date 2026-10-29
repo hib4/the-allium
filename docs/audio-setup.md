@@ -56,10 +56,10 @@ Device discovery lists reported inputs without checking every unrelated driver. 
 
 Live layers are **Low currents**, **Mid flowing lines**, **High filaments**, and **Transient blooms**. Each strength slider reaches zero to hide that layer. They respond to measured frequency energy and changes in the mix. They are not labels for bass, vocals or other detected instruments. Overall intensity, particle density, motion, Calm Mode and Reduced motion retain separate controls.
 
-## Stage display: 4416 × 896
+## Stage display profiles
 
-1. Connect the LED processor as an extended display. Have the venue technician confirm the OS output and processor mapping produce the intended **4416 × 896** active canvas without overscan or scaling distortion.
-2. Choose **Display profile → Venue LED · 4416 × 896**. The profile has the exact **69:14** ratio. The operator preview shares that ratio. On other screen shapes the venue composition is contained proportionally; **Responsive** fills an arbitrary viewport instead.
+1. Connect the LED processor as an extended display. Have the venue technician confirm the OS output and processor mapping produce the intended **4416 × 896** or **2424 × 896** active canvas without overscan or scaling distortion.
+2. Choose the matching option under **Display profile**: **Venue LED · 4416 × 896** uses **69:14**, and **Venue LED · 2424 × 896** uses **303:112**. Each target describes the full stage, including captions when enabled. The operator preview shares that ratio. On other screen shapes the venue composition is contained proportionally; **Responsive** fills an arbitrary viewport instead.
 3. Click **Open display**, move that browser window to the LED output and enter fullscreen. Operator and audience tabs must use exactly the same origin and browser profile. Escape and the keyboard-focusable exit action remain available.
 4. Enable **Display calibration** to inspect the inset edge, all corner markers, centerlines and circular geometry. The overlay shows target dimensions and browser viewport dimensions; it cannot measure LED processor mapping. Disable calibration before presenting. It does not change capture or caption settings.
 5. Confirm visual distribution, captions, reduced motion, contrast, viewing distance and comfort on the actual LED hardware. Captions retain the existing manual/sample controls and opaque band. Hiding captions retains the cue and lets the score fill the available area.

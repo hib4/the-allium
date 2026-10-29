@@ -1,11 +1,12 @@
 {
   "version": 2,
   "device": {
-    "name": "USB Audio Device",
+    "name": "BlackHole 2ch",
     "hostApi": "Core Audio"
   },
   "channels": [
-    1
+    1,
+    2
   ],
   "sampleRate": "auto",
   "sensitivity": 1,

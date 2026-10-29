@@ -1,3 +1,4 @@
+import { displayProfiles } from "./display";
 import {
   instruments,
   liveLayers,
@@ -74,7 +75,7 @@ export function validState(v: unknown): v is SessionState {
       (k) =>
         Number.isFinite(s.layers[k]) && s.layers[k] >= 0 && s.layers[k] <= 1,
     ) &&
-    ["responsive", "venue"].includes(s.displayProfile) &&
+    Object.keys(displayProfiles).includes(s.displayProfile) &&
     typeof s.calibration === "boolean" &&
     ["demo", "live", "standby"].includes(s.mode) &&
     typeof s.playing === "boolean" &&

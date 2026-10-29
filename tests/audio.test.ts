@@ -198,3 +198,20 @@ it("accepts optional capture-age diagnostics and validates mono microphone frame
   p.health.captureAgeMs = Infinity;
   expect(validPacket(p)).toBe(false);
 });
+
+it("accepts the 2424 display profile through settings serialization while retaining legacy defaults", () => {
+  const session = new Session(false);
+  expect(session.state.displayProfile).toBe("responsive");
+  session.update({ displayProfile: "venue-2424" });
+  expect(validState(JSON.parse(JSON.stringify(session.state)))).toBe(true);
+  expect(session.state.displayProfile).toBe("venue-2424");
+  expect(validState({ ...session.state, displayProfile: "venue" })).toBe(true);
+  expect(validState({ ...session.state, displayProfile: "unknown" })).toBe(
+    false,
+  );
+  const { displayProfile, ...legacy } = session.state;
+  expect((upgradeState(legacy) as typeof session.state).displayProfile).toBe(
+    "responsive",
+  );
+  session.dispose();
+});

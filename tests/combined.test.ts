@@ -1,6 +1,10 @@
 import { afterAll, expect, it } from "vitest";
 import { MixedChoreography } from "../src/engine/mixed";
-import { LIMITS, type ScoreFrame } from "../src/engine/choreography";
+import {
+  Choreography,
+  LIMITS,
+  type ScoreFrame,
+} from "../src/engine/choreography";
 import {
   Session,
   concert,
@@ -322,7 +326,7 @@ it("reveals piano blooms early and keeps a short soft attack visible through its
     expect(pianoPaths(s.render(6750))).toHaveLength(0);
   }
 });
-it("uses proportional readable piano markers without enlarging the flower form", () => {
+it("uses proportional readable piano markers with a consistent normalized flower form", () => {
   const marker = (height: number) => {
     const s = setup();
     s.render(0);
@@ -365,4 +369,294 @@ it("holds piano geometry stationary at zero Motion while sound levels fall", () 
       ),
     ).toEqual(first);
   }
+});
+
+const verticalCore = (f: ScoreFrame, color: number) =>
+  paths(f)
+    .filter((p) => p.color === color && !p.soft)
+    .reduce((a, b) => (a.width > b.width ? a : b));
+const rightY = (f: ScoreFrame, color: number) => {
+  const p = verticalCore(f, color);
+  return p.points[(p.count - 1) * 2 + 1];
+};
+function verticalStep(direction: number, calm = false) {
+  const subject = setup("original"),
+    reference = setup("original");
+  if (calm) {
+    subject.state.scene = "Calm Mode";
+    reference.state.scene = "Calm Mode";
+  }
+  const rest = { ...feature(0.5), centroid: 3000, flux: 0 };
+  subject.set(rest);
+  reference.set(rest);
+  for (let t = 0; t <= 2000; t += 50) {
+    subject.render(t);
+    reference.render(t);
+  }
+  subject.set({ ...rest, centroid: 3000 + direction * 600 });
+  const early: Record<number, number> = {},
+    late: Record<number, number> = {};
+  for (let t = 2050; t <= 2400; t += 50) {
+    const a = subject.render(t),
+      b = reference.render(t);
+    for (const color of [0xff3ebb, 0x6eb4ff]) {
+      const movement = -direction * (rightY(a, color) - rightY(b, color));
+      if (t === 2200) early[color] = movement;
+      if (t === 2400) late[color] = movement;
+      expect(verticalCore(a, color).width).toBe(verticalCore(b, color).width);
+      expect(verticalCore(a, color).alpha).toBe(verticalCore(b, color).alpha);
+    }
+  }
+  return { early, late };
+}
+it("gives small upward and downward changes larger, faster vertical travel without altering line appearance", () => {
+  for (const direction of [-1, 1]) {
+    const r = verticalStep(direction);
+    for (const [color, scale] of [
+      [0xff3ebb, 0.19],
+      [0x6eb4ff, 0.14],
+    ]) {
+      const formerSteadyTravel = (((600 / 12000) * 24) / 17) * scale * 896;
+      expect(r.early[color]).toBeGreaterThan(formerSteadyTravel * 1.5 * 0.6);
+      expect(r.late[color]).toBeGreaterThan(formerSteadyTravel * 1.25);
+    }
+  }
+});
+it("keeps Calm Mode vertical movement gentler", () => {
+  const normal = verticalStep(1),
+    calm = verticalStep(1, true);
+  for (const color of [0xff3ebb, 0x6eb4ff])
+    expect(calm.late[color]).toBeLessThan(normal.late[color] * 0.5);
+});
+it("bounds amplified vocal/guitar contours on both display sizes and small artwork", () => {
+  for (const [width, height] of [
+    [4416, 896],
+    [2424, 896],
+    [900, 182],
+    [320, 500],
+  ])
+    for (const variant of ["original", "combined"] as const) {
+      const s = setup(variant);
+      s.state.motion = 1;
+      for (let t = 0; t <= 3500; t += 50) {
+        s.set({ ...feature(0.9), centroid: t < 1750 ? 12000 : 0, flux: 1 });
+        const f = s.model.update(t, s.state, width, height, {}, 0.35);
+        expect(f.pathCount).toBeLessThanOrEqual(LIMITS.paths);
+        for (const p of paths(f).filter(
+          (p) => p.color === 0xff3ebb || p.color === 0x6eb4ff,
+        ))
+          for (let j = 0; j < p.count; j++) {
+            expect(p.points[j * 2 + 1]).toBeGreaterThanOrEqual(
+              height * 0.1 - 0.001,
+            );
+            expect(p.points[j * 2 + 1]).toBeLessThanOrEqual(
+              height * 0.9 + 0.001,
+            );
+          }
+      }
+    }
+});
+it("shares enhanced up/down geometry between Original and Combined", () => {
+  const a = setup("original"),
+    b = setup("combined");
+  for (let t = 0; t <= 4000; t += 50) {
+    const value = {
+      ...feature(0.5),
+      centroid: t < 1500 ? 3000 : t < 2500 ? 3600 : 2400,
+      flux: 0,
+    };
+    a.set(value);
+    b.set(value);
+    expect(coords(a.render(t))).toEqual(coords(b.render(t)));
+  }
+});
+
+it("spreads one piano event per accepted attack across all panorama regions without immediate repeats", () => {
+  for (const [width, height, regions] of [
+    [4416, 896, 3],
+    [2424, 896, 3],
+    [320, 500, 2],
+  ])
+    for (const variant of ["original", "combined"] as const) {
+      const s = setup(variant);
+      s.onset(true);
+      s.eventStrength(0.3);
+      for (let t = 0; t <= 1000; t += 50)
+        s.model.update(t, s.state, width, height, {}, 1);
+      const events = s.model.metrics.original!.pianoEvents;
+      expect(events).toHaveLength(4);
+      expect(new Set(events.map((e) => e.region)).size).toBe(regions);
+      for (let i = 1; i < events.length; i++)
+        expect(events[i].region).not.toBe(events[i - 1].region);
+      expect(Math.min(...events.map((e) => e.x))).toBeLessThan(0.32);
+      expect(Math.max(...events.map((e) => e.x))).toBeGreaterThan(0.68);
+      expect(events[0].intensity).toBeCloseTo(
+        (1 - Math.pow(0.7, 1.5)) * 1.25,
+        10,
+      );
+      const anchors = events.map(({ x, y, region }) => ({ x, y, region }));
+      s.onset(false);
+      s.model.update(1050, s.state, width, height, {}, 1);
+      expect(
+        s.model.metrics.original!.pianoEvents.map(({ x, y, region }) => ({
+          x,
+          y,
+          region,
+        })),
+      ).toEqual(anchors);
+    }
+});
+it("clears piano placement history on a new Live entry", () => {
+  const s = setup();
+  s.onset(true);
+  for (let t = 0; t <= 1000; t += 50) s.render(t);
+  const first = s.model.metrics.original!.pianoEvents[0];
+  s.state.mode = "standby";
+  s.render(1050);
+  s.state.mode = "live";
+  s.onset(false);
+  s.render(1100);
+  s.onset(true);
+  s.render(1150);
+  const next = s.model.metrics.original!.pianoEvents;
+  expect(next).toHaveLength(1);
+  expect(next[0].region).toBe(first.region);
+  expect(next[0].x).toBe(first.x);
+  expect(next[0].y).toBe(first.y);
+});
+it("tracks bass and saxophone changes quickly in both directions", () => {
+  const base = setup().state;
+  for (const direction of [-1, 1]) {
+    const model = new Choreography();
+    const f = { ...feature(0.5), centroid: 3000, flux: 0 };
+    for (let t = 0; t <= 2000; t += 50)
+      model.updateMeasured(t, base, 2424, 896, {}, 1, {
+        feature: f,
+        events: [],
+      });
+    for (let t = 2050; t <= 2400; t += 50)
+      model.updateMeasured(t, base, 2424, 896, {}, 1, {
+        feature: { ...f, centroid: 3000 + direction * 600 },
+        events: [],
+      });
+    expect(direction * (model.histories.bass.read(1) - 36)).toBeGreaterThan(
+      1.08,
+    );
+    expect(
+      direction * (model.histories.saxophone.read(1) - 67),
+    ).toBeGreaterThan(1.08);
+  }
+});
+it("keeps stronger bass/saxophone geometry grounded and bounded under extreme input", () => {
+  for (const [width, height] of [
+    [4416, 896],
+    [2424, 896],
+    [320, 500],
+  ]) {
+    const s = setup();
+    s.state.motion = 1;
+    for (let t = 0; t <= 2500; t += 50) {
+      s.set({ ...feature(0.95), centroid: t < 1250 ? 12000 : 0, flux: 1 });
+      const f = s.model.update(t, s.state, width, height, {}, 0.35);
+      for (const p of paths(f).filter(
+        (p) => p.color === 0x00b3a7 || p.color === 0xffaa66,
+      ))
+        for (let j = 0; j < p.count; j++) {
+          const y = p.points[j * 2 + 1];
+          expect(Number.isFinite(y)).toBe(true);
+          expect(y).toBeGreaterThanOrEqual(
+            height * (p.color === 0x00b3a7 ? 0.62 : 0.1) - 0.001,
+          );
+          expect(y).toBeLessThanOrEqual(
+            height * (p.color === 0x00b3a7 ? 0.98 : 0.9) + 0.001,
+          );
+        }
+    }
+  }
+});
+it("gives drum and piano events a stronger bounded response while retaining stationary Reduced Motion", () => {
+  const s = setup();
+  s.state.reduced = true;
+  s.eventStrength(0.3);
+  for (let t = 0; t <= 500; t += 50) s.render(t);
+  s.onset(true);
+  s.render(550);
+  s.onset(false);
+  const f = s.render(700),
+    ring = paths(f).find(
+      (p) => p.color === 0xffd84d && p.count === 64 && !p.soft,
+    )!;
+  const xs = Array.from(ring.points.slice(0, ring.count * 2)).filter(
+    (_, i) => i % 2 === 0,
+  );
+  expect((Math.max(...xs) - Math.min(...xs)) / 2).toBeGreaterThan(896 * 0.065);
+  expect(petalSpan(f)).toBeGreaterThan(896 * 0.27);
+  const before = coords(f);
+  s.set({ ...feature(0.9), centroid: 11000 });
+  for (let t = 750; t <= 1000; t += 50) s.render(t);
+  expect(coords(s.render(1050))).toEqual(before);
+});
+
+it("keeps guitar contours full width while retaining reduced height and thickness without cumulative shrinking", () => {
+  for (const variant of ["original", "combined"] as const)
+    for (const highContrast of [false, true]) {
+      const s = setup(variant);
+      s.state.reduced = true;
+      let f: ScoreFrame;
+      for (let t = 0; t <= 2500; t += 50)
+        f = s.model.update(t, s.state, 2424, 896, { highContrast }, 1);
+      const guitar = f!.paths
+        .slice(0, f!.pathCount)
+        .filter((p) => p.count === 80);
+      expect(guitar.length).toBeGreaterThan(0);
+      for (const p of guitar) {
+        expect(p.points[0]).toBeCloseTo(0, 2);
+        expect(p.points[(p.count - 1) * 2]).toBeCloseTo(2424, 2);
+      }
+      const first = guitar.map((p) => ({
+        points: Array.from(p.points.slice(0, p.count * 2)),
+        width: p.width,
+      }));
+      const repeat = s.model.update(
+        2500,
+        s.state,
+        2424,
+        896,
+        { highContrast },
+        1,
+      );
+      expect(
+        repeat.paths
+          .slice(0, repeat.pathCount)
+          .filter((p) => p.count === 80)
+          .map((p) => ({
+            points: Array.from(p.points.slice(0, p.count * 2)),
+            width: p.width,
+          })),
+      ).toEqual(first);
+      for (let t = 2550; t <= 3500; t += 50)
+        f = s.model.update(t, s.state, 2424, 896, { highContrast }, 1);
+      expect(
+        f!.paths
+          .slice(0, f!.pathCount)
+          .filter((p) => p.count === 80)
+          .map((p) => Array.from(p.points.slice(0, p.count * 2))),
+      ).toEqual(first.map((p) => p.points));
+    }
+});
+it("makes the teal bass readable during quiet input and retains its layer control", () => {
+  const s = setup("original");
+  s.set(feature(0.02));
+  for (let t = 0; t <= 4000; t += 50) s.render(t);
+  const core = paths(s.render(4050)).filter(
+    (p) => p.color === 0x00b3a7 && !p.soft,
+  );
+  expect(core.length).toBeGreaterThan(0);
+  for (const p of core) {
+    expect(p.width).toBeCloseTo(((1.5 * 896) / 550) * 1.4, 10);
+    expect(p.alpha).toBeGreaterThan(0.15);
+    expect(p.alpha).toBeLessThanOrEqual(1);
+  }
+  s.state.layers.currents = 0;
+  expect(paths(s.render(4100)).some((p) => p.color === 0x00b3a7)).toBe(false);
 });

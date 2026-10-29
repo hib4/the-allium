@@ -57,7 +57,7 @@ export function Score({
     [instrument, highContrast, profile],
   );
   return (
-    <div className={`score ${className}`}>
+    <div className={`score ${className}`} data-profile={profile}>
       <div className="score-renderer" ref={host} aria-hidden="true" />
       {failed && (
         <div className="score-fallback">
@@ -80,6 +80,30 @@ export function Score({
           </p>
         </div>
       )}
+      {!failed &&
+        state.mode !== "demo" &&
+        (state.liveChoreography === "original" ||
+          state.liveChoreography === "combined") && (
+          <ul
+            className="score-instrument-guide"
+            aria-label="Instrument visual guide"
+            role="list"
+          >
+            {instruments
+              .filter((name) => name !== "saxophone")
+              .map((name) => (
+                <li key={name}>
+                  <span
+                    className="score-instrument-guide-glyph"
+                    style={{ color: highContrast ? "#fff" : colors[name] }}
+                  >
+                    <InstrumentGlyph instrument={name} />
+                  </span>
+                  <span>{name.charAt(0).toUpperCase() + name.slice(1)}</span>
+                </li>
+              ))}
+          </ul>
+        )}
       <span className="sr-only">
         {state.mode !== "demo"
           ? "Visual score: low currents, mid flowing lines, high filaments and transient allium blooms responding to mixed audio."
